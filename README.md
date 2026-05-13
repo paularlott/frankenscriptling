@@ -13,6 +13,9 @@ make build-docker
 
 # Build and push multi-arch
 make build-docker-push
+
+# Run tests
+make test
 ```
 
 ## Usage
@@ -119,6 +122,44 @@ $vm->registerScriptFunc("hello", 'lambda: "Hello!"');
 $result = $vm->callFunction("hello", "");         // "Hello!"
 ```
 
+## Autoload Path
+
+Load libraries from the filesystem automatically. **The autoload path must be set before the first `eval()`/`import()`/`callFunction()` call**, because the VM is lazily initialized on first use:
+
+```php
+$vm = new Scriptling();
+$vm->setAutoloadPath("/app/libs");  // MUST be set before any eval/import
+$vm->import("mylib");               // loads /app/libs/mylib.py
+```
+
+The filesystem loader follows Python conventions:
+
+- `import foo` → looks for `/app/libs/foo.py` or `/app/libs/foo/__init__.py`
+- `import foo.bar` → looks for `/app/libs/foo/bar.py` or `/app/libs/foo.bar.py`
+
+You can add multiple search paths:
+
+```php
+$vm->addAutoloadPath("/app/custom-libs");
+$vm->addAutoloadPath("/app/shared-libs");
+```
+
+Directories are searched in order — first match wins.
+
+**Important:** Call `setAutoloadPath` or `addAutoloadPath` immediately after `new Scriptling()`, before any `eval()`, `import()`, or other VM calls. The VM is created lazily on first use, so the autoload path must be configured first:
+
+```php
+// Correct
+$vm = new Scriptling();
+$vm->setAutoloadPath("/app/libs");
+$vm->import("mylib");  // works
+
+// Wrong
+$vm = new Scriptling();
+$vm->eval("1 + 1");           // VM created here, no loader set
+$vm->setAutoloadPath("/app/libs"); // too late
+```
+
 ## Output Capture
 
 ```php
@@ -185,6 +226,14 @@ $vm->clearError();
 | -------------- | -------------------------------- | -------- | ------------------------------ |
 | `callFunction` | `string $name, string $argsJSON` | `string` | Call a function with JSON args |
 
+### Autoload Path
+
+| Method            | Parameters     | Return   | Description                                     |
+| ----------------- | -------------- | -------- | ----------------------------------------------- |
+| `setAutoloadPath` | `string $path` | `void`   | Set directory for filesystem library loading    |
+| `addAutoloadPath` | `string $path` | `void`   | Add additional directory to the autoload search |
+| `getAutoloadPath` |                | `string` | Get current autoload path(s)                    |
+
 ### Output
 
 | Method                | Parameters | Return   | Description            |
@@ -240,46 +289,46 @@ All Scriptling VM instances come pre-loaded with the following libraries. Use `i
 
 ### Standard Libraries
 
-| Library | Import Name | Description |
-|---|---|---|
-| JSON | `json` | JSON encoding/decoding (`json.dumps`, `json.loads`) |
-| Regex | `re` | Regular expressions (`re.match`, `re.findall`, `re.sub`) |
-| Time | `time` | Time functions (`time.time`, `time.sleep`, `time.strftime`) |
-| Datetime | `datetime` | Date/time objects (`datetime.now`, `datetime.timedelta`) |
-| Math | `math` | Math functions (`math.sqrt`, `math.pi`, `math.sin`) |
-| Base64 | `base64` | Base64 encoding (`base64.b64encode`, `base64.b64decode`) |
-| Hashlib | `hashlib` | Hashing (`hashlib.sha256`, `hashlib.md5`) |
-| Random | `random` | Random numbers (`random.randint`, `random.choice`) |
-| URL Lib | `urllib` | URL utilities |
-| URL Parse | `urllib.parse` | URL parsing (`urllib.parse.quote`, `urllib.parse.urlencode`) |
-| String | `string` | String constants (`string.ascii_letters`, `string.digits`) |
-| UUID | `uuid` | UUID generation (`uuid.uuid4`) |
-| HTML | `html` | HTML utilities (`html.escape`, `html.unescape`) |
-| Statistics | `statistics` | Statistical functions (`statistics.mean`, `statistics.stdev`) |
-| Functools | `functools` | Higher-order functions (`functools.partial`, `functools.reduce`) |
-| Textwrap | `textwrap` | Text wrapping and indentation |
-| Platform | `platform` | Platform information |
-| Itertools | `itertools` | Iterator functions (`itertools.count`, `itertools.chain`) |
-| Collections | `collections` | Data structures (`collections.Counter`, `collections.defaultdict`) |
-| IO | `io` | I/O streams |
-| Contextlib | `contextlib` | Context manager utilities |
-| Difflib | `difflib` | Diffing sequences (`difflib.unified_diff`) |
+| Library     | Import Name    | Description                                                        |
+| ----------- | -------------- | ------------------------------------------------------------------ |
+| JSON        | `json`         | JSON encoding/decoding (`json.dumps`, `json.loads`)                |
+| Regex       | `re`           | Regular expressions (`re.match`, `re.findall`, `re.sub`)           |
+| Time        | `time`         | Time functions (`time.time`, `time.sleep`, `time.strftime`)        |
+| Datetime    | `datetime`     | Date/time objects (`datetime.now`, `datetime.timedelta`)           |
+| Math        | `math`         | Math functions (`math.sqrt`, `math.pi`, `math.sin`)                |
+| Base64      | `base64`       | Base64 encoding (`base64.b64encode`, `base64.b64decode`)           |
+| Hashlib     | `hashlib`      | Hashing (`hashlib.sha256`, `hashlib.md5`)                          |
+| Random      | `random`       | Random numbers (`random.randint`, `random.choice`)                 |
+| URL Lib     | `urllib`       | URL utilities                                                      |
+| URL Parse   | `urllib.parse` | URL parsing (`urllib.parse.quote`, `urllib.parse.urlencode`)       |
+| String      | `string`       | String constants (`string.ascii_letters`, `string.digits`)         |
+| UUID        | `uuid`         | UUID generation (`uuid.uuid4`)                                     |
+| HTML        | `html`         | HTML utilities (`html.escape`, `html.unescape`)                    |
+| Statistics  | `statistics`   | Statistical functions (`statistics.mean`, `statistics.stdev`)      |
+| Functools   | `functools`    | Higher-order functions (`functools.partial`, `functools.reduce`)   |
+| Textwrap    | `textwrap`     | Text wrapping and indentation                                      |
+| Platform    | `platform`     | Platform information                                               |
+| Itertools   | `itertools`    | Iterator functions (`itertools.count`, `itertools.chain`)          |
+| Collections | `collections`  | Data structures (`collections.Counter`, `collections.defaultdict`) |
+| IO          | `io`           | I/O streams                                                        |
+| Contextlib  | `contextlib`   | Context manager utilities                                          |
+| Difflib     | `difflib`      | Diffing sequences (`difflib.unified_diff`)                         |
 
 ### Extension Libraries
 
-| Library | Import Name | Description |
-|---|---|---|
-| TOML | `toml` | TOML parsing/generation (`toml.loads`, `toml.dumps`) |
-| YAML | `yaml` | YAML parsing/generation (`yaml.safe_load`, `yaml.safe_dump`) |
-| AI | `scriptling.ai` | AI/LLM provider integration (OpenAI, etc.) |
-| AI Agent | `scriptling.ai.agent` | AI agent framework with tool calling |
-| AI Agent Interact | `scriptling.ai.agent.interact` | Interactive agent sessions |
-| AI Memory | `scriptling.ai.memory` | Persistent memory for AI agents |
-| MCP | `scriptling.mcp` | Model Context Protocol tool interaction |
-| TOON | `scriptling.toon` | TOON (Token-Oriented Object Notation) encoding |
-| Similarity | `scriptling.similarity` | Fuzzy matching and MinHash similarity search |
-| HTML Templates | `scriptling.template.html` | HTML template rendering |
-| Text Templates | `scriptling.template.text` | Text template rendering |
+| Library           | Import Name                    | Description                                                  |
+| ----------------- | ------------------------------ | ------------------------------------------------------------ |
+| TOML              | `toml`                         | TOML parsing/generation (`toml.loads`, `toml.dumps`)         |
+| YAML              | `yaml`                         | YAML parsing/generation (`yaml.safe_load`, `yaml.safe_dump`) |
+| AI                | `scriptling.ai`                | AI/LLM provider integration (OpenAI, etc.)                   |
+| AI Agent          | `scriptling.ai.agent`          | AI agent framework with tool calling                         |
+| AI Agent Interact | `scriptling.ai.agent.interact` | Interactive agent sessions                                   |
+| AI Memory         | `scriptling.ai.memory`         | Persistent memory for AI agents                              |
+| MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction                      |
+| TOON              | `scriptling.toon`              | TOON (Token-Oriented Object Notation) encoding               |
+| Similarity        | `scriptling.similarity`        | Fuzzy matching and MinHash similarity search                 |
+| HTML Templates    | `scriptling.template.html`     | HTML template rendering                                      |
+| Text Templates    | `scriptling.template.text`     | Text template rendering                                      |
 
 ### Example
 

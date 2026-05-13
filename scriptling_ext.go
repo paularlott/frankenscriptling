@@ -16,6 +16,7 @@ import (
 	"github.com/paularlott/scriptling/extlibs/agent"
 	extmcp "github.com/paularlott/scriptling/extlibs/mcp"
 	"github.com/paularlott/scriptling/extlibs/similarity"
+	"github.com/paularlott/scriptling/libloader"
 	"github.com/paularlott/scriptling/stdlib"
 	"github.com/dunglas/frankenphp"
 
@@ -24,8 +25,9 @@ import (
 
 //export_php:class Scriptling
 type ScriptlingVM struct {
-	vm  *scriptling.Scriptling
-	err string
+	vm          *scriptling.Scriptling
+	err         string
+	autoloadDir string
 }
 
 func (s *ScriptlingVM) ensureVM() bool {
@@ -44,6 +46,11 @@ func (s *ScriptlingVM) ensureVM() bool {
 		extlibs.RegisterTemplateTextLibrary(s.vm)
 		agent.Register(s.vm)
 		agent.RegisterInteract(s.vm)
+
+		if s.autoloadDir != "" {
+			loader := libloader.NewFilesystem(s.autoloadDir)
+			s.vm.SetLibraryLoader(loader)
+		}
 	}
 	return true
 }
@@ -441,6 +448,52 @@ func (s *ScriptlingVM) GetOutput() unsafe.Pointer {
 	}
 	s.clearErr()
 	return frankenphp.PHPString(s.vm.GetOutput(), false)
+}
+
+// --- Autoload Path ---
+
+//export_php:method Scriptling::setAutoloadPath(string $path): void
+func (s *ScriptlingVM) SetAutoloadPath(path *C.zend_string) {
+	goPath := frankenphp.GoString(unsafe.Pointer(path))
+	s.autoloadDir = goPath
+	if s.vm != nil {
+		loader := libloader.NewFilesystem(goPath)
+		s.vm.SetLibraryLoader(loader)
+	}
+	s.clearErr()
+}
+
+//export_php:method Scriptling::addAutoloadPath(string $path): void
+func (s *ScriptlingVM) AddAutoloadPath(path *C.zend_string) {
+	goPath := frankenphp.GoString(unsafe.Pointer(path))
+	if s.vm == nil {
+		if s.autoloadDir == "" {
+			s.autoloadDir = goPath
+		} else {
+			s.autoloadDir = s.autoloadDir + ":" + goPath
+		}
+		return
+	}
+
+	existing := s.vm.GetLibraryLoader()
+	var chain *libloader.Chain
+	if existing != nil {
+		if c, ok := existing.(*libloader.Chain); ok {
+			chain = c
+		} else {
+			chain = libloader.NewChain(existing)
+		}
+	} else {
+		chain = libloader.NewChain()
+	}
+	chain.Add(libloader.NewFilesystem(goPath))
+	s.vm.SetLibraryLoader(chain)
+	s.clearErr()
+}
+
+//export_php:method Scriptling::getAutoloadPath(): string
+func (s *ScriptlingVM) GetAutoloadPath() unsafe.Pointer {
+	return frankenphp.PHPString(s.autoloadDir, false)
 }
 
 // --- Error Handling ---

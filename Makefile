@@ -1,7 +1,7 @@
 IMAGE_NAME ?= frankenscriptling
 IMAGE_TAG ?= 1.12.2
 
-.PHONY: help build-apple build-docker build-docker-push
+.PHONY: help build-apple build-docker build-docker-push test
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -21,3 +21,9 @@ build-docker-push: ## Build and push multi-arch image to registry
 		-t $(IMAGE_NAME):$(IMAGE_TAG) \
 		--push \
 		.
+
+test: ## Run PHP tests inside the container
+	container run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		$(IMAGE_NAME):$(IMAGE_TAG) \
+		frankenphp php-cli /app/tests/test_all.php
