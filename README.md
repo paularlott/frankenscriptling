@@ -2,6 +2,8 @@
 
 A Docker image combining [FrankenPHP](https://frankenphp.dev/) with the [Scriptling](https://github.com/paularlott/scriptling) scripting language, exposed as a PHP class.
 
+Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling](https://hub.docker.com/r/paularlott/frankenscriptling).
+
 ## Quick Start
 
 ```bash
@@ -274,14 +276,14 @@ Each `new Scriptling()` creates an isolated VM with its own environment. The VM 
 
 ## Build Configuration
 
-| Variable             | Default             | Description        |
-| -------------------- | ------------------- | ------------------ |
-| `FRANKENPHP_VERSION` | `1.12.2`            | FrankenPHP version |
-| `PHP_VERSION`        | `8.5.6`             | PHP version        |
-| `GO_VERSION`         | `1.26.3`            | Go version         |
-| `SCRIPTLING_VERSION` | `v0.8.0`            | Scriptling version |
-| `IMAGE_NAME`         | `frankenscriptling` | Docker image name  |
-| `IMAGE_TAG`          | `1.12.2`            | Docker image tag   |
+| Variable             | Default                   | Description        |
+| -------------------- | ------------------------- | ------------------ |
+| `FRANKENPHP_VERSION` | `1.12.3`                  | FrankenPHP version |
+| `PHP_VERSION`        | `8.5.6`                   | PHP version        |
+| `GO_VERSION`         | `1.26.3`                  | Go version         |
+| `SCRIPTLING_VERSION` | `v0.8.1`                  | Scriptling version |
+| `IMAGE_NAME`         | `frankenscriptling`       | Docker image name  |
+| `IMAGE_TAG`          | `1.12.3-php8.5.6`         | Docker image tag   |
 
 ## Built-in Libraries
 
