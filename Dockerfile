@@ -1,6 +1,5 @@
 ARG FRANKENPHP_VERSION=1.12.3
 ARG PHP_VERSION=8.5.6
-ARG GO_VERSION=1.26.3
 ARG GO_MODULE=example.com/frankenscriptling
 ARG SCRIPTLING_VERSION=v0.8.1
 
@@ -8,14 +7,10 @@ FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION} AS build
 
 ARG FRANKENPHP_VERSION=1.12.3
 ARG PHP_VERSION=8.5.6
-ARG GO_VERSION=1.26.3
 ARG GO_MODULE=example.com/frankenscriptling
 ARG SCRIPTLING_VERSION=v0.8.1
-ARG TARGETARCH
 
-RUN rm -rf /usr/local/go \
-    && curl -sL https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz | tar -C /usr/local -xz \
-    && CGO_ENABLED=0 GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 
 WORKDIR /app
 

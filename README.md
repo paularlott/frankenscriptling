@@ -7,16 +7,16 @@ Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling
 ## Quick Start
 
 ```bash
-# Build for local architecture (Apple Containers)
-make build-apple
+# Build and push all PHP versions in parallel (docker buildx bake)
+make
 
-# Build multi-arch (Docker buildx)
-make build-docker
+# Build a specific PHP version
+make frankenscriptling-8.5.9
 
-# Build and push multi-arch
-make build-docker-push
+# Print the resolved bake configuration without building
+make print
 
-# Run tests
+# Run tests against the default PHP version
 make test
 ```
 
@@ -276,14 +276,17 @@ Each `new Scriptling()` creates an isolated VM with its own environment. The VM 
 
 ## Build Configuration
 
-| Variable             | Default                   | Description        |
-| -------------------- | ------------------------- | ------------------ |
-| `FRANKENPHP_VERSION` | `1.12.3`                  | FrankenPHP version |
-| `PHP_VERSION`        | `8.5.6`                   | PHP version        |
-| `GO_VERSION`         | `1.26.3`                  | Go version         |
-| `SCRIPTLING_VERSION` | `v0.8.1`                  | Scriptling version |
-| `IMAGE_NAME`         | `frankenscriptling`       | Docker image name  |
-| `IMAGE_TAG`          | `1.12.3-php8.5.6`         | Docker image tag   |
+Builds are driven by `docker-bake.hcl` via the Makefile. Override any variable via the environment, a local `.env` file (gitignored), or the command line.
+
+| Variable             | Default        | Description                                        |
+| -------------------- | -------------- | -------------------------------------------------- |
+| `TAG_BASE`           | `paularlott`   | Registry/namespace for image tags                  |
+| `CACHE_TAG_BASE`     | `$(TAG_BASE)`  | Registry for the build cache                       |
+| `FRANKENPHP_VERSION` | `1.12.7`       | FrankenPHP version                                 |
+| `SCRIPTLING_VERSION` | `v0.20.1`      | Scriptling version                                 |
+| `PHP_VERSIONS`       | `8.4.24 8.5.9` | Space-separated PHP versions (built in parallel)   |
+
+Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.20.1-php8.5.9` and `0.20.1-php8.5`).
 
 ## Built-in Libraries
 
