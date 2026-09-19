@@ -1,3 +1,5 @@
 /.env
 .DS_Store
 /tests/fixtures/plugins/
+/tests/fixtures/plugins-explicit/
+/tests/fixtures/plugins-http/

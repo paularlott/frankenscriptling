@@ -299,6 +299,13 @@ explicitly enables — everything fs/net-capable is closed by default. Set
 including which libraries are gated, excluded, and the network policy file
 format.
 
+`scriptling.plugin` is separate again: `SCRIPTLING_PLUGIN`/`SCRIPTLING_PLUGIN_DIR`
+let the operator pre-load specific plugin binaries, and scripts can only use
+what got pre-loaded this way — `load()`/`unload()` always fail unless
+`SCRIPTLING_PLUGIN_HTTP_ENABLED` opts into new HTTP(S)-only plugin loading
+under the same network policy. See
+[Plugins](docs/security-policy.md#plugins-scriptlingplugin) for details.
+
 ## Built-in Libraries
 
 All Scriptling VM instances come pre-loaded with the following libraries. Use `import <name>` to access them.
@@ -359,7 +366,10 @@ Filesystem- and network-capable libraries (`pathlib`, `os`, `fs`, `glob`,
 `scriptling.grep`, `scriptling.sed`, `requests`,
 `scriptling.net.websocket`, `scriptling.net.resolve`, `subprocess`) are
 **not** in this table — they're closed by default and must be enabled per the
-[Security Policy](#security-policy) section above.
+[Security Policy](#security-policy) section above. `scriptling.plugin` is
+gated the same way but by its own env vars
+(`SCRIPTLING_PLUGIN`/`SCRIPTLING_PLUGIN_DIR`/`SCRIPTLING_PLUGIN_HTTP_ENABLED`),
+also documented there.
 
 ### Example
 

@@ -54,23 +54,37 @@ RUN CGO_ENABLED=1 \
     --with github.com/caddyserver/transform-encoder@latest \
     --with ${GO_MODULE}=/app
 
-# Test-only: a real, already-tested scriptling plugin binary, built as a
-# fixture for the security-policy plugin tests (make build-test-plugin).
+# Test-only: real, already-tested scriptling plugin binaries, built as
+# fixtures for the security-policy plugin tests (make build-test-plugin).
+# Three binaries: the original stdio fixture (directory-scanned by
+# SCRIPTLING_PLUGIN_DIR in most tests), a second, distinctly-named stdio
+# fixture (loaded via an explicit SCRIPTLING_PLUGIN path, to prove the two
+# env vars combine), and an HTTP-mode fixture (a real http(s) JSON-RPC
+# endpoint, for SCRIPTLING_PLUGIN=http(s)://... and for a script-initiated
+# load() the network policy actually allows). The HTTP fixture is exported
+# to its own directory, never the one SCRIPTLING_PLUGIN_DIR scans — a
+# directory scan spawns every executable it finds as a stdio JSON-RPC peer,
+# and this one is an HTTP listener, not a stdio peer.
 # Sits between builder and runtime deliberately — the LAST stage in this
 # file is what a target-less build (`docker build .` / bake with no
 # `target` field) produces, and that must always be `runtime` below, never
 # this test-only one.
 FROM builder AS test-plugin
 ARG SCRIPTLING_VERSION=v0.8.1
-COPY tests/fixtures/plugin-src/main.go /test-plugin-src/main.go
+COPY tests/fixtures/plugin-src/ /test-plugin-src/
 RUN cd /test-plugin-src \
     && go mod init frankenscriptling-test-plugin \
     && go get github.com/paularlott/scriptling@${SCRIPTLING_VERSION} \
     && go mod tidy \
-    && CGO_ENABLED=0 go build -o /test-plugin .
+    && mkdir -p /out/plugins /out/plugins-explicit /out/plugins-http \
+    && CGO_ENABLED=0 go build -o /out/plugins/test-plugin . \
+    && CGO_ENABLED=0 go build -o /out/plugins-explicit/second-plugin ./second-plugin \
+    && CGO_ENABLED=0 go build -o /out/plugins-http/http-plugin ./http-plugin
 
 FROM scratch AS test-plugin-export
-COPY --from=test-plugin /test-plugin /test-plugin
+COPY --from=test-plugin /out/plugins/test-plugin /plugins/test-plugin
+COPY --from=test-plugin /out/plugins-explicit/second-plugin /plugins-explicit/second-plugin
+COPY --from=test-plugin /out/plugins-http/http-plugin /plugins-http/http-plugin
 
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS runtime
 

@@ -17,7 +17,7 @@ an operator controls (process environment variables and/or files on disk).
 | Network-gated | Registered only when enabled *and* a network policy is configured | `requests`, `scriptling.net.websocket`, `scriptling.net.resolve`, `scriptling.ai`, `scriptling.mcp` |
 | Disable-only | On/off, no restriction possible (upstream doesn't support it) | `subprocess` |
 | Secret-provider-gated | Registered only when enabled *and* at least one secret provider is configured | `scriptling.secret` |
-| Plugin-gated | Registered only when enabled *and* a plugin directory and/or HTTP-loading is configured; scripts can never `load`/`unload` a plugin themselves, only use whichever ones the operator pre-loaded (see [Plugins](#plugins-scriptlingplugin) below) | `scriptling.plugin` |
+| Plugin-gated | Registered only when enabled *and* a plugin directory and/or HTTP-loading is configured; scripts can always use whichever plugins the operator pre-loaded, and can only `load`/`unload` a plugin themselves when HTTP-loading is explicitly opted into, and then only over HTTP(S) within the network policy (see [Plugins](#plugins-scriptlingplugin) below) | `scriptling.plugin` |
 | Not shipped | Excluded from this image entirely — no config can turn them on | `scriptling.wait_for`, `scriptling.messaging.*`, `scriptling.container` (Docker/Podman/Apple socket access), `scriptling.valkey`, `scriptling.badgerdb`, `scriptling.sql`, `scriptling.sqlite`, `scriptling.net.gossip`, `scriptling.net.multicast`, `scriptling.net.unicast`, `scriptling.provision.file`, `scriptling.provision.fetch`, `scriptling.runtime.*`, `scriptling.nomad` |
 
 Notes:
@@ -136,21 +136,31 @@ a provider alone doesn't register it.
 
 `scriptling.plugin` gives scripts access to plugin processes the operator
 pre-loaded — `list`, `describe`, `call_function`, `batch_call`, and
-`call_method` — but **scripts can never `load()` or `unload()` a plugin
-themselves**, regardless of configuration. Upstream, `load()` takes a
-script-supplied path or URL and executes/fetches it directly with no
-`allowed_paths` or network-policy check at all — registering the plugin
-control library without this restriction would hand scripts unrestricted
-subprocess execution and unrestricted network fetch combined. This image
-always registers it against a [`plugin.TransportNone`](https://github.com/paularlott/scriptling/blob/main/plugin/client.go)
-scope (or, only when HTTP-loading is explicitly enabled below, a
-network-policy-gated `TransportHTTP` scope) — never an unrestricted one.
+`call_method`. Upstream, `load()` takes a script-supplied path or URL and
+executes/fetches it directly with no `allowed_paths` or network-policy check
+at all — registering the plugin control library without any restriction
+would hand scripts unrestricted subprocess execution and unrestricted
+network fetch combined. This image never registers it against an
+unrestricted manager:
+
+- By default (`SCRIPTLING_PLUGIN_HTTP_ENABLED` unset), the scope scripts see
+  is [`plugin.TransportNone`](https://github.com/paularlott/scriptling/blob/main/plugin/client.go):
+  `load()` and `unload()` both always fail, unconditionally — the operator's
+  preloaded plugins stay usable but completely fixed.
+- When HTTP-loading is explicitly enabled (below), the scope is
+  `TransportHTTP` instead: scripts may `load()` *new* HTTP(S) plugins within
+  the network policy, and stdio/executable loading still always fails. In
+  this mode `unload()` is no longer blocked outright, but it can still only
+  ever remove a plugin that scope itself loaded — a script can undo a
+  `load()` it just did, but it can never reach, and so can never remove, any
+  of the operator's own preloaded plugins, which live in a separate,
+  unreachable parent manager.
 
 | Variable | Meaning |
 | --- | --- |
 | `SCRIPTLING_PLUGIN` | One or more specific plugin executable paths or `http(s)://` URLs (comma-separated) the operator trusts — same env var name and either-a-path-or-a-URL convention as the `scriptling` CLI's own `--plugin` flag. Loaded first, at startup. A bad entry here fails the whole policy closed. |
 | `SCRIPTLING_PLUGIN_DIR` | One or more directories (comma-separated) of executable plugin binaries the operator trusts. Scanned once at startup, after `SCRIPTLING_PLUGIN`. Upstream, a bad directory or a plugin that fails to start is only a warning — directory discovery is meant to tolerate a stray non-plugin file — so we promote any such warning to a hard failure ourselves here, closing the whole policy the same way a malformed network-policy file does, rather than silently registering fewer plugins than intended. |
-| `SCRIPTLING_PLUGIN_HTTP_ENABLED` | `"true"`, unset otherwise. Off by default. When true **and** a network policy is configured, scripts may `load()` *new* HTTP(S) plugins — but only through that same network policy (the exact `allow_hosts`/`deny_hosts`/loopback/private-IP rules that govern `requests`). Stdio/executable loading is never re-enabled by this flag, under any configuration, and it has no effect on `SCRIPTLING_PLUGIN`/`SCRIPTLING_PLUGIN_DIR` themselves — those are always admin-controlled, never script-controlled. |
+| `SCRIPTLING_PLUGIN_HTTP_ENABLED` | `"true"`, unset otherwise. Off by default. When true **and** a network policy is configured, scripts may `load()` *new* HTTP(S) plugins — but only through that same network policy (the exact `allow_hosts`/`deny_hosts`/loopback/private-IP rules that govern `requests`) — and may `unload()` a plugin they loaded this way, though never one the operator preloaded. Stdio/executable loading is never re-enabled by this flag, under any configuration, and it has no effect on `SCRIPTLING_PLUGIN`/`SCRIPTLING_PLUGIN_DIR` themselves — those are always admin-controlled, never script-controlled. |
 
 Unlike the CLI's `--plugin`, there's no env-var equivalent of `--plugin-arg`/
 `--plugin-env`/`--plugin-header`/`--plugin-insecure` — `SCRIPTLING_PLUGIN`

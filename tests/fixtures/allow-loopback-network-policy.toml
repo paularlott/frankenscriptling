@@ -1,0 +1,8 @@
+# Deliberately permissive: a real deployment should almost never allow
+# loopback. This file exists specifically for the one happy-path plugin test
+# that has to prove a *permitted* HTTP plugin load actually succeeds end to
+# end, not only that a denied one fails (test_security_plugins_http.php
+# already covers denial).
+https_only = false
+allow_ip_literals = true
+allow_loopback = true

@@ -53,16 +53,16 @@ frankenscriptling-%:
 	docker buildx bake $(BAKE_FLAGS) frankenscriptling-$(subst .,-,$*)
 
 .PHONY: build-test-plugin
-## Build the real scriptling plugin binary used as a fixture by test-security-plugins
+## Build the real scriptling plugin binaries used as fixtures by the plugin security tests
 build-test-plugin:
 	docker buildx build \
 		--target test-plugin-export \
 		--build-arg FRANKENPHP_VERSION=$(FRANKENPHP_VERSION) \
 		--build-arg PHP_VERSION=$(PHP_VERSION) \
 		--build-arg SCRIPTLING_VERSION=$(SCRIPTLING_VERSION) \
-		--output type=local,dest=tests/fixtures/plugins \
+		--output type=local,dest=tests/fixtures \
 		.
-	chmod +x tests/fixtures/plugins/test-plugin
+	chmod +x tests/fixtures/plugins/test-plugin tests/fixtures/plugins-explicit/second-plugin tests/fixtures/plugins-http/http-plugin
 
 .PHONY: test
 ## Run PHP tests in the container (uses the pushed image for the default PHP version)
@@ -114,6 +114,8 @@ test-security-failclosed:
 		"SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/malformed-syntax.toml" \
 		"SCRIPTLING_POLICY_FILE=/app/tests/fixtures/malformed-syntax.toml" \
 		"SCRIPTLING_SECRET_PROVIDER=vault" \
+		"SCRIPTLING_PLUGIN=/app/tests/fixtures/plugins/does-not-exist" \
+		"SCRIPTLING_PLUGIN_DIR=/app/tests/fixtures/plugins-does-not-exist" \
 	; do \
 		echo "--- $$envs ---"; \
 		docker run --rm -v $(CURDIR)/tests:/app/tests:ro $$(printf -- '-e %s ' $$envs) \
@@ -164,9 +166,41 @@ test-security-plugins-combined:
 		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
 		frankenphp php-cli /app/tests/test_security_plugins_combined.php
 
+.PHONY: test-security-plugins-explicit-http
+## Run SCRIPTLING_PLUGIN=http(s)://... tests: the admin's own preload can be a real HTTP endpoint, not just a local path
+test-security-plugins-explicit-http:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN=http://127.0.0.1:8199/json-rpc \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		sh -c '/app/tests/fixtures/plugins-http/http-plugin -addr 127.0.0.1:8199 -path /json-rpc >/tmp/http-plugin.log 2>&1 & sleep 0.5 && frankenphp php-cli /app/tests/test_security_plugins_explicit_http.php'
+
+.PHONY: test-security-plugins-dual
+## Run the SCRIPTLING_PLUGIN + SCRIPTLING_PLUGIN_DIR combined test: two distinct plugins preloaded from two different sources at once
+test-security-plugins-dual:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN=/app/tests/fixtures/plugins-explicit/second-plugin \
+		-e SCRIPTLING_PLUGIN_DIR=/app/tests/fixtures/plugins \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_plugins_dual.php
+
+.PHONY: test-security-plugins-http-allowed
+## Run the positive opt-in-HTTP-loading test: a policy-permitted load() actually succeeds and is callable, not just that a denied one fails
+test-security-plugins-http-allowed:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN_HTTP_ENABLED=true \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/allow-loopback-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		sh -c '/app/tests/fixtures/plugins-http/http-plugin -addr 127.0.0.1:8199 -path /json-rpc >/tmp/http-plugin.log 2>&1 & sleep 0.5 && frankenphp php-cli /app/tests/test_security_plugins_http_allowed.php'
+
 .PHONY: test-all-security
 ## Run every security-policy test suite
-test-all-security: test-security test-security-edge test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined
+test-all-security: test-security test-security-edge test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined test-security-plugins-explicit-http test-security-plugins-dual test-security-plugins-http-allowed
 
 .PHONY: help
 ## This help screen
