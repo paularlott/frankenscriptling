@@ -14,11 +14,14 @@ COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 
 WORKDIR /app
 
-COPY scriptling_ext.go ./
+COPY scriptling_ext.go security.go ./
+
+ENV GOTOOLCHAIN=auto
 
 RUN go mod init ${GO_MODULE} \
     && go get github.com/dunglas/frankenphp@v${FRANKENPHP_VERSION} \
-    && go get github.com/paularlott/scriptling@${SCRIPTLING_VERSION}
+    && go get github.com/paularlott/scriptling@${SCRIPTLING_VERSION} \
+    && go mod tidy
 
 ADD https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz /tmp/php.tar.gz
 RUN tar xzf /tmp/php.tar.gz -C /tmp
@@ -47,6 +50,8 @@ RUN CGO_ENABLED=1 \
     --with github.com/dunglas/mercure/caddy@latest \
     --with github.com/dunglas/vulcain/caddy@latest \
     --with github.com/dunglas/caddy-cbrotli@latest \
+    --with github.com/caddy-dns/cloudflare@latest \
+    --with github.com/caddyserver/transform-encoder@latest \
     --with ${GO_MODULE}=/app
 
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}

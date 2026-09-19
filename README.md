@@ -283,10 +283,21 @@ Builds are driven by `docker-bake.hcl` via the Makefile. Override any variable v
 | `TAG_BASE`           | `paularlott`   | Registry/namespace for image tags                  |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`  | Registry for the build cache                       |
 | `FRANKENPHP_VERSION` | `1.12.7`       | FrankenPHP version                                 |
-| `SCRIPTLING_VERSION` | `v0.20.1`      | Scriptling version                                 |
+| `SCRIPTLING_VERSION` | `v0.25.2`      | Scriptling version                                 |
 | `PHP_VERSIONS`       | `8.4.24 8.5.9` | Space-separated PHP versions (built in parallel)   |
 
-Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.20.1-php8.5.9` and `0.20.1-php8.5`).
+Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.25.2-php8.5.9` and `0.25.2-php8.5`).
+
+## Security Policy
+
+Scripts only get filesystem or network access for libraries a vhost
+explicitly enables — everything fs/net-capable is closed by default. Set
+`SCRIPTLING_ENABLED_LIBRARIES`, `SCRIPTLING_ALLOWED_PATHS`, and/or
+`SCRIPTLING_NETWORK_POLICY_FILE` (globally or per Caddy site block via the
+`env` directive) to open specific libraries up. See
+[docs/security-policy.md](docs/security-policy.md) for the full reference,
+including which libraries are gated, excluded, and the network policy file
+format.
 
 ## Built-in Libraries
 
@@ -325,15 +336,30 @@ All Scriptling VM instances come pre-loaded with the following libraries. Use `i
 | ----------------- | ------------------------------ | ------------------------------------------------------------ |
 | TOML              | `toml`                         | TOML parsing/generation (`toml.loads`, `toml.dumps`)         |
 | YAML              | `yaml`                         | YAML parsing/generation (`yaml.safe_load`, `yaml.safe_dump`) |
-| AI                | `scriptling.ai`                | AI/LLM provider integration (OpenAI, etc.)                   |
+| HTML Parser       | `html.parser`                  | HTML tag parsing                                             |
+| Logging           | `logging`                      | Structured logging                                           |
+| Sys               | `sys`                          | Interpreter/platform info (`sys.argv`, `sys.platform`)       |
+| Secrets           | `secrets`                      | Cryptographically strong random values                       |
+| Shlex             | `shlex`                        | Shell-like string splitting/quoting                          |
+| CSV               | `scriptling.csv`               | CSV parsing/generation                                       |
+| XML               | `scriptling.xml`               | XML marshal/unmarshal                                        |
+| Markdown          | `scriptling.markdown`          | Markdown to HTML rendering                                    |
+| AI                | `scriptling.ai`                | AI/LLM provider integration (network-gated, see [Security Policy](#security-policy)) |
 | AI Agent          | `scriptling.ai.agent`          | AI agent framework with tool calling                         |
 | AI Agent Interact | `scriptling.ai.agent.interact` | Interactive agent sessions                                   |
 | AI Memory         | `scriptling.ai.memory`         | Persistent memory for AI agents                              |
-| MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction                      |
+| MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction (network-gated)      |
 | TOON              | `scriptling.toon`              | TOON (Token-Oriented Object Notation) encoding               |
 | Similarity        | `scriptling.similarity`        | Fuzzy matching and MinHash similarity search                 |
 | HTML Templates    | `scriptling.template.html`     | HTML template rendering                                      |
 | Text Templates    | `scriptling.template.text`     | Text template rendering                                      |
+
+Filesystem- and network-capable libraries (`pathlib`, `os`, `fs`, `glob`,
+`shutil`, `tempfile`, `tarfile`, `zipfile`, `scriptling.find`,
+`scriptling.grep`, `scriptling.sed`, `requests`,
+`scriptling.net.websocket`, `scriptling.net.resolve`, `subprocess`) are
+**not** in this table — they're closed by default and must be enabled per the
+[Security Policy](#security-policy) section above.
 
 ### Example
 

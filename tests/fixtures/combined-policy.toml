@@ -1,0 +1,8 @@
+[libraries]
+enabled = ["pathlib", "os", "requests"]
+
+[filesystem]
+allowed_paths = ["/app/tests"]
+
+[network]
+https_only = false

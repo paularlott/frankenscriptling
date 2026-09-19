@@ -1,0 +1,5 @@
+# Used by `make test-security`. Deliberately near-empty: enabling `requests`
+# still leaves netsecurity's own safe defaults in force (loopback/private/
+# link-local/IP-literal denied) — this file just has to exist for the
+# network-gated libraries to register at all.
+https_only = false

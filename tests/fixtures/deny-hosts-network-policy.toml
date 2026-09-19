@@ -1,0 +1,4 @@
+# Proves deny_hosts wins even when the same host is also allow-listed.
+https_only = false
+allow_hosts = ["evil.example", "example.com"]
+deny_hosts = ["evil.example"]

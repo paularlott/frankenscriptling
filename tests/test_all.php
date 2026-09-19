@@ -61,8 +61,8 @@ echo "=== Evaluation ===\n";
 assert_eq($vm->eval("2 + 3"), "5", "eval: basic addition");
 assert_eq($vm->eval("10 * 4"), "40", "eval: multiplication");
 assert_eq($vm->eval("\"hello\""), "hello", "eval: string literal");
-assert_eq($vm->eval("True"), "true", "eval: boolean True");
-assert_eq($vm->eval("False"), "false", "eval: boolean False");
+assert_eq($vm->eval("True"), "True", "eval: boolean True");
+assert_eq($vm->eval("False"), "False", "eval: boolean False");
 assert_eq($vm->eval("None"), "None", "eval: None");
 assert_eq($vm->eval("[1, 2, 3]"), "[1, 2, 3]", "eval: list");
 assert_eq($vm->eval("1 + 2 * 3"), "7", "eval: operator precedence");
@@ -88,10 +88,10 @@ $vm->setVarFloat("floatvar", 3.14);
 assert_contains($vm->eval("floatvar"), "3.14", "setVarFloat: float");
 
 $vm->setVarBool("boolvar", true);
-assert_eq($vm->eval("boolvar"), "true", "setVarBool: true");
+assert_eq($vm->eval("boolvar"), "True", "setVarBool: true");
 
 $vm->setVarBool("boolfalse", false);
-assert_eq($vm->eval("boolfalse"), "false", "setVarBool: false");
+assert_eq($vm->eval("boolfalse"), "False", "setVarBool: false");
 
 $vm->setVarNull("nullvar");
 assert_eq($vm->eval("nullvar"), "None", "setVarNull");
@@ -241,7 +241,7 @@ assert_contains($vm->eval("import math; str(math.pi)"), "3.14", "stdlib: math.pi
 assert_contains($vm->eval("import re; str(re.findall(r\"\\d+\", \"a1b2c3\"))"), "1", "stdlib: re.findall");
 assert_contains($vm->eval("import base64; base64.b64encode(\"test\")"), "dGVzdA==", "stdlib: base64");
 $vm->eval("import hashlib");
-assert_contains($vm->eval("hashlib.sha256(\"hello\")"), "2cf24dba5fb0a30e26e83b2ac5b9e29e", "stdlib: hashlib");
+assert_contains($vm->eval("hashlib.sha256(\"hello\").hexdigest()"), "2cf24dba5fb0a30e26e83b2ac5b9e29e", "stdlib: hashlib");
 assert_contains($vm->eval("import string; string.ascii_uppercase"), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "stdlib: string");
 assert_eq($vm->eval("import html; html.escape(\"<b>\")"), "&lt;b&gt;", "stdlib: html.escape");
 assert_contains($vm->eval("import uuid; str(uuid.uuid4())"), "-", "stdlib: uuid format");
@@ -256,6 +256,24 @@ echo "=== Version ===\n";
 $version = $vm->getScriptlingVersion();
 assert_true(strlen($version) > 0, "getScriptlingVersion: non-empty");
 assert_true(preg_match('/^\d+\.\d+/', $version) === 1, "getScriptlingVersion: semver format");
+
+echo "=== Security Policy: closed by default ===\n";
+
+// No SCRIPTLING_* env vars are set for this run, so every fs- and
+// net-capable library must be absent — importing one is an error, not a
+// silently-open sandbox.
+$vmSec = new Scriptling();
+$vmSec->eval("import pathlib");
+assert_true($vmSec->hasError(), "security: pathlib not registered by default");
+assert_contains($vmSec->getLastError(), "pathlib", "security: pathlib error mentions library name");
+
+$vmSec->clearError();
+$vmSec->eval("import requests");
+assert_true($vmSec->hasError(), "security: requests not registered by default");
+
+$vmSec->clearError();
+$vmSec->eval("import subprocess");
+assert_true($vmSec->hasError(), "security: subprocess not registered by default");
 
 echo "=== VM Isolation ===\n";
 

@@ -15,7 +15,7 @@ variable "FRANKENPHP_VERSION" {
 }
 
 variable "SCRIPTLING_VERSION" {
-  default = "v0.20.1"
+  default = "v0.25.2"
 }
 
 variable "PHP_VERSIONS" {

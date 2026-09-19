@@ -1,0 +1,2 @@
+# Layered on top of open-network-policy.toml in the multi-file merge check.
+allow_hosts = ["example.com"]

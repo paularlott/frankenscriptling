@@ -1,0 +1,6 @@
+# allow_ip_literals=true only lifts the IP-literal ban itself. Loopback,
+# private, and link-local (incl. cloud metadata) addresses must still be
+# blocked by their own separate checks — there is no single flag that opens
+# everything.
+https_only = false
+allow_ip_literals = true
