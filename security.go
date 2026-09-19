@@ -24,6 +24,7 @@ import (
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
 	"github.com/paularlott/scriptling/extlibs/netsecurity"
 	"github.com/paularlott/scriptling/extlibs/secretprovider"
+	"github.com/paularlott/scriptling/plugin"
 )
 
 const (
@@ -49,15 +50,37 @@ const (
 	envSecretCacheTTL        = "SCRIPTLING_SECRET_CACHE_TTL"
 	envSecretDefaultField    = "SCRIPTLING_SECRET_DEFAULT_FIELD"
 	envSecretInsecureSkipTLS = "SCRIPTLING_SECRET_INSECURE_SKIP_TLS"
+
+	// scriptling.plugin: admin-supplied plugin binaries only, never a
+	// script-driven load(). SCRIPTLING_PLUGIN (specific executable paths or
+	// http(s) URLs, comma-separated — same env var name and Path-is-either
+	// convention as the scriptling CLI's own --plugin flag) and
+	// SCRIPTLING_PLUGIN_DIR (directory scan, matches --plugin-dir) both
+	// pre-load plugins the admin trusts, on our own unrestricted Go-side
+	// manager — never reachable from a script. Scripts get
+	// list/describe/call_function against whatever got pre-loaded this way,
+	// but load()/unload() always fail (plugin.TransportNone).
+	// SCRIPTLING_PLUGIN_HTTP_ENABLED (off by default) additionally lets
+	// scripts load *new* HTTP(S) plugins on top of whatever was pre-loaded,
+	// but only through the same network policy that governs requests/
+	// scriptling.ai/scriptling.mcp — never re-enabling stdio/exec loading
+	// from scripts. Unlike the CLI's --plugin, there's no env-var
+	// equivalent of --plugin-arg/--plugin-env/--plugin-header/
+	// --plugin-insecure: entries here are plain paths/URLs with no per-entry
+	// customization.
+	envPlugin            = "SCRIPTLING_PLUGIN"
+	envPluginDir         = "SCRIPTLING_PLUGIN_DIR"
+	envPluginHTTPEnabled = "SCRIPTLING_PLUGIN_HTTP_ENABLED"
 )
 
 // LibraryPolicy is the resolved policy for one VM: which libraries may be
 // registered, and the fs/net restrictions those libraries get.
 type LibraryPolicy struct {
 	Enabled      map[string]bool
-	AllowedPaths []string            // always non-nil; empty means deny-all
-	Network      *netsecurity.Config // nil means "don't register net-capable libraries"
+	AllowedPaths []string                 // always non-nil; empty means deny-all
+	Network      *netsecurity.Config      // nil means "don't register net-capable libraries"
 	Secrets      *secretprovider.Registry // nil means "don't register scriptling.secret"
+	PluginScope  *plugin.Manager          // nil means "don't register scriptling.plugin"
 }
 
 func (p *LibraryPolicy) isEnabled(name string) bool {
@@ -85,8 +108,89 @@ func resolveGlobalPolicy() (*LibraryPolicy, error) {
 		if globalPolicyErr == nil {
 			globalPolicy.Secrets, globalPolicyErr = loadSecretRegistryFromEnv()
 		}
+		if globalPolicyErr == nil {
+			globalPolicy.PluginScope, globalPolicyErr = loadPluginScopeFromEnv(globalPolicy.Network)
+		}
 	})
 	return globalPolicy, globalPolicyErr
+}
+
+// loadPluginScopeFromEnv builds the scope registerLibraries hands to
+// scriptling.plugin, if any plugin config is present at all. The admin's own
+// unrestricted parent manager pre-loads whatever SCRIPTLING_PLUGIN_DIR
+// points at (never a script-driven call); the returned scope is what scripts
+// actually see, and it is always restricted:
+//   - SCRIPTLING_PLUGIN_HTTP_ENABLED unset/false (the default): TransportNone
+//     — load()/unload() fail unconditionally, pre-loaded plugins remain
+//     fully usable.
+//   - SCRIPTLING_PLUGIN_HTTP_ENABLED=true and a network policy is configured:
+//     TransportHTTP + WithHTTPTransport(guard's own transport) — scripts may
+//     load new HTTP(S) plugins, but only within that network policy. Stdio/
+//     exec loading from scripts is never re-enabled by this flag.
+//   - SCRIPTLING_PLUGIN_HTTP_ENABLED=true with no network policy configured:
+//     falls back to TransportNone — "enabled and configured" applies here
+//     exactly like every other net-gated feature.
+//
+// Returns (nil, nil) when none of SCRIPTLING_PLUGIN, SCRIPTLING_PLUGIN_DIR,
+// or SCRIPTLING_PLUGIN_HTTP_ENABLED is set, meaning scriptling.plugin is
+// never registered regardless of SCRIPTLING_ENABLED_LIBRARIES.
+func loadPluginScopeFromEnv(network *netsecurity.Config) (*plugin.Manager, error) {
+	plugins := splitComma(os.Getenv(envPlugin))
+	dirs := splitComma(os.Getenv(envPluginDir))
+	httpEnabled := os.Getenv(envPluginHTTPEnabled) == "true"
+	if len(plugins) == 0 && len(dirs) == 0 && !httpEnabled {
+		return nil, nil
+	}
+
+	parent := plugin.NewManager(nil)
+
+	// Explicit entries first, then the directory scan — same order and the
+	// same identity rule (resolved path/URL) as the CLI's --plugin before
+	// --plugin-dir: an executable also found via the dir scan is a no-op,
+	// the explicit entry wins.
+	if len(plugins) > 0 {
+		specs := make([]plugin.PluginSpec, len(plugins))
+		for i, p := range plugins {
+			specs[i] = plugin.PluginSpec{Path: p}
+		}
+		if err := parent.LoadPlugins(context.Background(), specs); err != nil {
+			return nil, fmt.Errorf("%s: %w", envPlugin, err)
+		}
+	}
+
+	for _, dir := range dirs {
+		parent.AddDir(dir)
+	}
+	if len(dirs) > 0 {
+		// Load() itself only warns on a bad directory or a plugin that
+		// failed to start (directory discovery is meant to tolerate a
+		// stray non-plugin file) — it does not return an error for either.
+		// That's the wrong default for us: a typo'd SCRIPTLING_PLUGIN_DIR
+		// must not silently register nothing, so promote any warning to a
+		// hard failure ourselves, same as every other malformed-config case.
+		if err := parent.Load(context.Background()); err != nil {
+			return nil, fmt.Errorf("%s: %w", envPluginDir, err)
+		}
+		if warnings := parent.Warnings(); len(warnings) > 0 {
+			return nil, fmt.Errorf("%s: %s", envPluginDir, strings.Join(warnings, "; "))
+		}
+	}
+
+	if httpEnabled && network != nil {
+		guard, err := netsecurity.NewGuard(network)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", envPluginHTTPEnabled, err)
+		}
+		// HTTPClient's transport, not the bare NewTransport() dialer: it
+		// wraps every request in guard.CheckURL (scheme, host allow/deny
+		// lists, IP-literal handling) *and* validates every dialed address,
+		// the same two-layer enforcement requests/scriptling.ai/scriptling.mcp
+		// get. The dial-only transport alone would silently skip the
+		// allow_hosts/deny_hosts checks for plugin loading.
+		guardedTransport := guard.HTTPClient().Transport
+		return parent.NewScope(plugin.WithTransport(plugin.TransportHTTP), plugin.WithHTTPTransport(guardedTransport)), nil
+	}
+	return parent.NewScope(plugin.WithTransport(plugin.TransportNone)), nil
 }
 
 // loadSecretRegistryFromEnv builds the secretprovider.Registry for

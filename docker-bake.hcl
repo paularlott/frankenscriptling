@@ -15,7 +15,7 @@ variable "FRANKENPHP_VERSION" {
 }
 
 variable "SCRIPTLING_VERSION" {
-  default = "v0.25.2"
+  default = "v0.25.3"
 }
 
 variable "PHP_VERSIONS" {
@@ -74,6 +74,10 @@ target "frankenscriptling" {
   matrix      = { php = PHP_VERSIONS }
   inherits    = ["_common"]
   context     = "."
+  # Explicit, not "whichever stage happens to be last in the Dockerfile" —
+  # the Dockerfile also has test-only stages (test-plugin/test-plugin-export)
+  # that must never become the published image by accident.
+  target      = "runtime"
 
   labels = {
     "org.opencontainers.image.title"       = "Frankenscriptling"

@@ -8,7 +8,7 @@
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
 FRANKENPHP_VERSION ?= 1.12.7
-SCRIPTLING_VERSION ?= v0.25.2
+SCRIPTLING_VERSION ?= v0.25.3
 PHP_VERSIONS ?= 8.4.24 8.5.9
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 
@@ -51,6 +51,18 @@ list:
 ## Build a specific PHP version (e.g. make frankenscriptling-8.5.9 or frankenscriptling-8-5-9)
 frankenscriptling-%:
 	docker buildx bake $(BAKE_FLAGS) frankenscriptling-$(subst .,-,$*)
+
+.PHONY: build-test-plugin
+## Build the real scriptling plugin binary used as a fixture by test-security-plugins
+build-test-plugin:
+	docker buildx build \
+		--target test-plugin-export \
+		--build-arg FRANKENPHP_VERSION=$(FRANKENPHP_VERSION) \
+		--build-arg PHP_VERSION=$(PHP_VERSION) \
+		--build-arg SCRIPTLING_VERSION=$(SCRIPTLING_VERSION) \
+		--output type=local,dest=tests/fixtures/plugins \
+		.
+	chmod +x tests/fixtures/plugins/test-plugin
 
 .PHONY: test
 ## Run PHP tests in the container (uses the pushed image for the default PHP version)
@@ -109,9 +121,52 @@ test-security-failclosed:
 			frankenphp php-cli /app/tests/test_security_failclosed.php || exit 1; \
 	done
 
+.PHONY: test-security-plugins
+## Run admin-supplied plugin tests (build-test-plugin first): happy path (list/describe/call_function) and unhappy path (load/unload always fail)
+test-security-plugins:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN_DIR=/app/tests/fixtures/plugins \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_plugins.php
+
+.PHONY: test-security-plugins-http
+## Run opt-in HTTP plugin-loading tests: still gated by the network policy, stdio/exec still impossible
+test-security-plugins-http:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN_HTTP_ENABLED=true \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/permissive-ip-literals-policy.toml,/app/tests/fixtures/deny-hosts-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_plugins_http.php
+
+.PHONY: test-security-plugins-explicit
+## Run SCRIPTLING_PLUGIN tests: a single explicit plugin path, as an alternative to SCRIPTLING_PLUGIN_DIR
+test-security-plugins-explicit:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN=/app/tests/fixtures/plugins/test-plugin \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_plugins_explicit.php
+
+.PHONY: test-security-plugins-combined
+## Run the combined scenario: SCRIPTLING_PLUGIN_DIR preload + SCRIPTLING_PLUGIN_HTTP_ENABLED at once
+test-security-plugins-combined:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.plugin \
+		-e SCRIPTLING_PLUGIN_DIR=/app/tests/fixtures/plugins \
+		-e SCRIPTLING_PLUGIN_HTTP_ENABLED=true \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/permissive-ip-literals-policy.toml,/app/tests/fixtures/deny-hosts-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_plugins_combined.php
+
 .PHONY: test-all-security
 ## Run every security-policy test suite
-test-all-security: test-security test-security-edge test-security-adversarial test-security-failclosed
+test-all-security: test-security test-security-edge test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined
 
 .PHONY: help
 ## This help screen

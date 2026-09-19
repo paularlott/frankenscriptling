@@ -54,7 +54,25 @@ RUN CGO_ENABLED=1 \
     --with github.com/caddyserver/transform-encoder@latest \
     --with ${GO_MODULE}=/app
 
-FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}
+# Test-only: a real, already-tested scriptling plugin binary, built as a
+# fixture for the security-policy plugin tests (make build-test-plugin).
+# Sits between builder and runtime deliberately — the LAST stage in this
+# file is what a target-less build (`docker build .` / bake with no
+# `target` field) produces, and that must always be `runtime` below, never
+# this test-only one.
+FROM builder AS test-plugin
+ARG SCRIPTLING_VERSION=v0.8.1
+COPY tests/fixtures/plugin-src/main.go /test-plugin-src/main.go
+RUN cd /test-plugin-src \
+    && go mod init frankenscriptling-test-plugin \
+    && go get github.com/paularlott/scriptling@${SCRIPTLING_VERSION} \
+    && go mod tidy \
+    && CGO_ENABLED=0 go build -o /test-plugin .
+
+FROM scratch AS test-plugin-export
+COPY --from=test-plugin /test-plugin /test-plugin
+
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends procps vim \

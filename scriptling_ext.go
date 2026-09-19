@@ -18,6 +18,7 @@ import (
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
 	"github.com/paularlott/scriptling/extlibs/similarity"
 	"github.com/paularlott/scriptling/libloader"
+	"github.com/paularlott/scriptling/plugin"
 	"github.com/paularlott/scriptling/stdlib"
 	"github.com/dunglas/frankenphp"
 
@@ -105,6 +106,19 @@ func registerLibraries(vm *scriptling.Scriptling, policy *LibraryPolicy) {
 	// AND the library is individually enabled.
 	if policy.Secrets != nil {
 		reg(extlibs.SecretLibraryName, func() { extlibs.RegisterSecretLibrary(vm, policy.Secrets) })
+	}
+
+	// Plugin-gated: closed unless SCRIPTLING_PLUGIN_DIR and/or
+	// SCRIPTLING_PLUGIN_HTTP_ENABLED configured something (see security.go)
+	// AND the library is individually enabled. policy.PluginScope is always
+	// either a plugin.TransportNone scope (load/unload always fail; admin's
+	// pre-loaded plugins stay fully usable) or, only when HTTP-loading is
+	// explicitly enabled with a network policy present, a TransportHTTP
+	// scope routed through that same policy's guarded transport.
+	if policy.PluginScope != nil {
+		reg(plugin.ControlLibraryName, func() {
+			plugin.RegisterLibraries(vm, policy.PluginScope, plugin.PolicyFromSecurity(policy.Network, policy.AllowedPaths))
+		})
 	}
 
 	// Network-gated: closed unless policy.Network is non-nil AND the library

@@ -96,7 +96,6 @@ echo "=== Adversarial: excluded libraries never register, even if you try to ena
 $excluded = [
     "scriptling.wait_for",
     "scriptling.container",
-    "scriptling.plugin",
     "scriptling.valkey",
     "scriptling.badgerdb",
     "scriptling.sql",
@@ -124,6 +123,18 @@ echo "=== Adversarial: scriptling.secret without a configured provider ===\n";
 $vm->clearError();
 $vm->eval("import scriptling.secret");
 assert_true($vm->hasError(), "adversarial: scriptling.secret stays unregistered without a configured provider");
+
+echo "=== Adversarial: scriptling.plugin without SCRIPTLING_PLUGIN_DIR/HTTP_ENABLED ===\n";
+
+// SCRIPTLING_ENABLED_LIBRARIES includes scriptling.plugin in this run too,
+// but neither SCRIPTLING_PLUGIN_DIR nor SCRIPTLING_PLUGIN_HTTP_ENABLED is
+// set — unlike the permanently-excluded libraries above, scriptling.plugin
+// is a real, supported library (see test_security_plugins.php for its full
+// enabled+configured behaviour); it just still needs "configured", not only
+// "enabled", exactly like scriptling.secret and the network-gated libraries.
+$vm->clearError();
+$vm->eval("import scriptling.plugin");
+assert_true($vm->hasError(), "adversarial: scriptling.plugin stays unregistered without a plugin dir or HTTP-loading enabled");
 
 echo "\n" . str_repeat("=", 50) . "\n";
 echo "Results: $pass passed, $fail failed\n";
