@@ -283,10 +283,10 @@ Builds are driven by `docker-bake.hcl` via the Makefile. Override any variable v
 | `TAG_BASE`           | `paularlott`   | Registry/namespace for image tags                  |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`  | Registry for the build cache                       |
 | `FRANKENPHP_VERSION` | `1.12.7`       | FrankenPHP version                                 |
-| `SCRIPTLING_VERSION` | `v0.25.3`      | Scriptling version                                 |
+| `SCRIPTLING_VERSION` | `v0.25.4`      | Scriptling version                                 |
 | `PHP_VERSIONS`       | `8.4.24 8.5.9` | Space-separated PHP versions (built in parallel)   |
 
-Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.25.3-php8.5.9` and `0.25.3-php8.5`).
+Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.25.4-php8.5.9` and `0.25.4-php8.5`).
 
 ## Security Policy
 
