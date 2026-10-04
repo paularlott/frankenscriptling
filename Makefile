@@ -7,9 +7,9 @@
 
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
-FRANKENPHP_VERSION ?= 1.12.7
-SCRIPTLING_VERSION ?= v0.27.1
-PHP_VERSIONS ?= 8.4.25 8.5.10
+FRANKENPHP_VERSION ?= 1.13.0
+SCRIPTLING_VERSION ?= v0.28.0
+PHP_VERSIONS ?= 8.4.26 8.5.11
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 
 # =============================================================================
