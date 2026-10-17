@@ -57,11 +57,33 @@ allowed_paths = ["/app/data"]
 [network]
 # same keys as the standalone network policy file, see below
 allow_hosts = ["api.example.com"]
+
+[limits]
+# see "Resource limits" below
+memory_bytes = 67108864
+max_value_bytes = 1048576
 ```
 
 When both `SCRIPTLING_POLICY_FILE` and the plain env vars are set, the env
 vars act as the base and the combined file's sections override them where
 the file sets something.
+
+### Resource limits
+
+Two more optional env vars bound what each VM may use. Both are in bytes; unset
+or `0` means no limit, which is the default. They use the same names as the
+`scriptling` CLI, and the `[limits]` keys in `SCRIPTLING_POLICY_FILE` match the
+CLI's config file.
+
+| Variable | `[limits]` key | Meaning |
+| --- | --- | --- |
+| `SCRIPTLING_MEMORY_LIMIT` | `memory_bytes` | Estimated memory one VM may hold in strings, bytes and containers. Going over cancels the running call with an error containing `memory limit exceeded`. The estimate is sampled, so it is approximate, and it is per VM, not a ceiling on the process. |
+| `SCRIPTLING_MAX_VALUE_BYTES` | `max_value_bytes` | Largest single string, bytes value or container one operation may create (including read bodies and captured output). Going over raises `MemoryError` in the script. |
+
+A value that isn't a non-negative integer fails the VM closed, like any other
+malformed policy. PHP code can lower either limit for one VM
+(`setMemoryLimit`, `setMaxValueBytes`) but can never raise or remove the
+operator's limit. Running time is bounded separately with `evalWithTimeout`.
 
 ### Network policy file schema
 

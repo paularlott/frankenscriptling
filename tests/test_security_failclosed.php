@@ -25,6 +25,11 @@ $vm->eval("1 + 1");
 assert_true($vm->hasError(), "failclosed: trivial eval fails when policy config is malformed");
 assert_true(strlen($vm->getLastError()) > 0, "failclosed: error message is non-empty");
 
+// And it stays locked out: the failure isn't a one-off on first use.
+$vm->clearError();
+$vm->eval("1 + 1");
+assert_true($vm->hasError(), "failclosed: later evals keep failing");
+
 echo "\n" . str_repeat("=", 50) . "\n";
 echo "Results: $pass passed, $fail failed\n";
 if ($fail > 0) {

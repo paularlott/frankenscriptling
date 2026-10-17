@@ -8,7 +8,7 @@
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
 FRANKENPHP_VERSION ?= 1.13.0
-SCRIPTLING_VERSION ?= v0.30.2
+SCRIPTLING_VERSION ?= v0.32.0
 PHP_VERSIONS ?= 8.4.26 8.5.11
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 
@@ -116,11 +116,26 @@ test-security-failclosed:
 		"SCRIPTLING_SECRET_PROVIDER=vault" \
 		"SCRIPTLING_PLUGIN=/app/tests/fixtures/plugins/does-not-exist" \
 		"SCRIPTLING_PLUGIN_DIR=/app/tests/fixtures/plugins-does-not-exist" \
+		"SCRIPTLING_MEMORY_LIMIT=64MB" \
+		"SCRIPTLING_MAX_VALUE_BYTES=-1" \
 	; do \
 		echo "--- $$envs ---"; \
 		docker run --rm -v $(CURDIR)/tests:/app/tests:ro $$(printf -- '-e %s ' $$envs) \
 			$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
 			frankenphp php-cli /app/tests/test_security_failclosed.php || exit 1; \
+	done
+
+.PHONY: test-limits
+## Run resource-limit tests with limits set by env vars, then by a policy file
+test-limits:
+	@for envs in \
+		"SCRIPTLING_MEMORY_LIMIT=67108864 SCRIPTLING_MAX_VALUE_BYTES=1048576" \
+		"SCRIPTLING_POLICY_FILE=/app/tests/fixtures/limits-policy.toml" \
+	; do \
+		echo "--- $$envs ---"; \
+		docker run --rm -v $(CURDIR)/tests:/app/tests:ro $$(printf -- '-e %s ' $$envs) \
+			$(TAG_BASE)/frankenscriptling:$(FRANKENPHP_VERSION)-php$(PHP_VERSION) \
+			frankenphp php-cli /app/tests/test_limits.php || exit 1; \
 	done
 
 .PHONY: test-security-plugins
@@ -200,7 +215,7 @@ test-security-plugins-http-allowed:
 
 .PHONY: test-all-security
 ## Run every security-policy test suite
-test-all-security: test-security test-security-edge test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined test-security-plugins-explicit-http test-security-plugins-dual test-security-plugins-http-allowed
+test-all-security: test-limits test-security test-security-edge test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined test-security-plugins-explicit-http test-security-plugins-dual test-security-plugins-http-allowed
 
 .PHONY: help
 ## This help screen

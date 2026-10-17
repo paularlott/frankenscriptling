@@ -101,10 +101,12 @@ $jsonResult = $vm->getVarJSON("jsonvar");
 assert_contains($jsonResult, '"x"', "setVarJSON: object");
 
 $vm->setVarList("listvar", '[10, 20, 30]');
+assert_eq($vm->eval("isinstance(listvar[0], int)"), "True", "setVarList: whole numbers stay int");
 $listResult = $vm->eval("listvar");
 assert_contains($listResult, "10", "setVarList: basic");
 
 $vm->setVarDict("dictvar", '{"name": "test", "value": 99}');
+assert_eq($vm->eval("isinstance(dictvar['value'], int)"), "True", "setVarDict: whole numbers stay int");
 $dictResult = $vm->eval("dictvar");
 assert_contains($dictResult, "test", "setVarDict: basic");
 
@@ -184,6 +186,11 @@ assert_eq($vm->callFunction("greeter", ""), "hello", "callFunction: no args");
 assert_eq($vm->callFunction("greeter", "[]"), "hello", "callFunction: empty array");
 
 $vm->registerScriptFunc("identity", "lambda x: x");
+assert_eq($vm->callFunction("identity", "[1.5]"), "1.5", "callFunction: float arg stays float");
+assert_eq($vm->callFunction("identity", "[2.0]"), "2.0", "callFunction: 2.0 stays float");
+$vm->callFunction("identity", "[1] trailing");
+assert_true($vm->hasError(), "callFunction: trailing data after JSON rejected");
+$vm->clearError();
 assert_eq($vm->callFunction("identity", "[42]"), "42", "callFunction: single arg");
 
 echo "=== Output Capture ===\n";
@@ -234,9 +241,9 @@ assert_eq($vm3->eval("lib2.SECOND"), "99", "addAutoloadPath: second path");
 
 echo "=== Built-in Libraries ===\n";
 
-assert_eq($vm->eval("import json; json.dumps({\"k\": 1})"), "{\"k\":1}", "stdlib: json.dumps");
+assert_eq($vm->eval("import json; json.dumps({\"k\": 1})"), "{\"k\": 1}", "stdlib: json.dumps");
 assert_contains($vm->eval("import json; json.loads('{\"a\":2}')[\"a\"]"), "2", "stdlib: json.loads");
-assert_eq($vm->eval("import math; math.sqrt(144)"), "12", "stdlib: math.sqrt");
+assert_eq($vm->eval("import math; math.sqrt(144)"), "12.0", "stdlib: math.sqrt");
 assert_contains($vm->eval("import math; str(math.pi)"), "3.14", "stdlib: math.pi");
 assert_contains($vm->eval("import re; str(re.findall(r\"\\d+\", \"a1b2c3\"))"), "1", "stdlib: re.findall");
 assert_contains($vm->eval("import base64; base64.b64encode(\"test\")"), "dGVzdA==", "stdlib: base64");
@@ -274,6 +281,26 @@ assert_true($vmSec->hasError(), "security: requests not registered by default");
 $vmSec->clearError();
 $vmSec->eval("import subprocess");
 assert_true($vmSec->hasError(), "security: subprocess not registered by default");
+
+echo "=== Type Names ===\n";
+
+assert_eq($vm->eval("type(1).__name__"), "int", "type: Python type name");
+assert_eq($vm->eval("type(None).__name__"), "NoneType", "type: NoneType");
+assert_eq($vm->eval("type(1) == int"), "True", "type: compares with builtin");
+
+echo "=== Resource Limits ===\n";
+
+$lim = new Scriptling();
+assert_eq($lim->getMemoryLimit(), 0, "limits: no memory limit by default");
+assert_eq($lim->getMaxValueBytes(), 0, "limits: no value limit by default");
+$lim->setMaxValueBytes(1000);
+assert_false($lim->hasError(), "limits: PHP can set a value limit when none is configured");
+$lim->eval('s = "a" * 2000');
+assert_true($lim->hasError(), "limits: PHP-set value limit enforced");
+$lim->setMaxValueBytes(0);
+assert_false($lim->hasError(), "limits: PHP can clear its own limit when none is configured");
+$lim->eval('s = "a" * 2000');
+assert_false($lim->hasError(), "limits: cleared value limit no longer enforced");
 
 echo "=== VM Isolation ===\n";
 

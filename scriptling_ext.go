@@ -5,6 +5,7 @@ import "C"
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unsafe"
@@ -28,19 +29,25 @@ import (
 //export_php:class Scriptling
 type ScriptlingVM struct {
 	vm          *scriptling.Scriptling
+	policy      *LibraryPolicy
 	err         string
 	autoloadDir string
 }
 
 func (s *ScriptlingVM) ensureVM() bool {
 	if s.vm == nil {
-		s.vm = scriptling.New()
-
+		// Resolve the policy before creating the VM so a malformed policy
+		// fails every call, not just the first.
 		policy, err := resolveGlobalPolicy()
 		if err != nil {
 			s.setErr(fmt.Sprintf("scriptling security policy: %s", err))
 			return false
 		}
+		s.policy = policy
+		s.vm = scriptling.New(
+			scriptling.WithMemoryLimit(policy.MemoryLimit),
+			scriptling.WithMaxValueBytes(policy.MaxValueBytes),
+		)
 		registerLibraries(s.vm, policy)
 
 		if s.autoloadDir != "" {
@@ -196,6 +203,22 @@ func (s *ScriptlingVM) EvalFile(path *C.zend_string) unsafe.Pointer {
 	return frankenphp.PHPString(result.Inspect(), false)
 }
 
+// decodeJSON is json.Unmarshal with numbers kept as json.Number, so whole
+// numbers reach scripts as ints and the rest as floats, as Python's
+// json.loads does; plain Unmarshal makes every number a float64.
+func decodeJSON(data string, v any) error {
+	dec := json.NewDecoder(strings.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	// Like Unmarshal, reject anything after the value.
+	if _, err := dec.Token(); err != io.EOF {
+		return fmt.Errorf("invalid character after top-level value")
+	}
+	return nil
+}
+
 // --- Set Variables ---
 
 //export_php:method Scriptling::setVar(string $name, string $value): void
@@ -249,7 +272,7 @@ func (s *ScriptlingVM) SetVarJSON(name *C.zend_string, jsonStr *C.zend_string) {
 	goName := frankenphp.GoString(unsafe.Pointer(name))
 	goJSON := frankenphp.GoString(unsafe.Pointer(jsonStr))
 	var val interface{}
-	if err := json.Unmarshal([]byte(goJSON), &val); err != nil {
+	if err := decodeJSON(goJSON, &val); err != nil {
 		s.setErr(fmt.Sprintf("invalid JSON: %s", err))
 		return
 	}
@@ -264,7 +287,7 @@ func (s *ScriptlingVM) SetVarList(name *C.zend_string, jsonStr *C.zend_string) {
 	goName := frankenphp.GoString(unsafe.Pointer(name))
 	goJSON := frankenphp.GoString(unsafe.Pointer(jsonStr))
 	var val []interface{}
-	if err := json.Unmarshal([]byte(goJSON), &val); err != nil {
+	if err := decodeJSON(goJSON, &val); err != nil {
 		s.setErr(fmt.Sprintf("invalid JSON array: %s", err))
 		return
 	}
@@ -279,7 +302,7 @@ func (s *ScriptlingVM) SetVarDict(name *C.zend_string, jsonStr *C.zend_string) {
 	goName := frankenphp.GoString(unsafe.Pointer(name))
 	goJSON := frankenphp.GoString(unsafe.Pointer(jsonStr))
 	var val map[string]interface{}
-	if err := json.Unmarshal([]byte(goJSON), &val); err != nil {
+	if err := decodeJSON(goJSON, &val); err != nil {
 		s.setErr(fmt.Sprintf("invalid JSON object: %s", err))
 		return
 	}
@@ -487,7 +510,7 @@ func (s *ScriptlingVM) parseArgsJSON(argsJSON string) ([]interface{}, error) {
 		return nil, nil
 	}
 	var args []interface{}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+	if err := decodeJSON(argsJSON, &args); err != nil {
 		return nil, fmt.Errorf("invalid JSON args: %s", err)
 	}
 	return args, nil
@@ -529,6 +552,84 @@ func (s *ScriptlingVM) GetOutput() unsafe.Pointer {
 	}
 	s.clearErr()
 	return frankenphp.PHPString(s.vm.GetOutput(), false)
+}
+
+// --- Resource Limits ---
+
+// tightenLimit checks a limit PHP asks for against the operator's: with no
+// operator limit anything non-negative goes (0 = no limit); with one, PHP may
+// only lower it, never raise or remove it.
+func tightenLimit(what string, requested, operator int64) error {
+	if requested < 0 {
+		return fmt.Errorf("%s must not be negative", what)
+	}
+	if operator > 0 && (requested == 0 || requested > operator) {
+		return fmt.Errorf("%s cannot be raised above the configured limit of %d bytes", what, operator)
+	}
+	return nil
+}
+
+//export_php:method Scriptling::setMemoryLimit(int $bytes): void
+func (s *ScriptlingVM) SetMemoryLimit(bytes int64) {
+	if !s.ensureVM() {
+		return
+	}
+	if err := tightenLimit("memory limit", bytes, s.policy.MemoryLimit); err != nil {
+		s.setError(err)
+		return
+	}
+	s.vm.SetMemoryLimit(bytes)
+	s.clearErr()
+}
+
+//export_php:method Scriptling::getMemoryLimit(): int
+func (s *ScriptlingVM) GetMemoryLimit() int64 {
+	if !s.ensureVM() {
+		return 0
+	}
+	s.clearErr()
+	return s.vm.MemoryLimit()
+}
+
+//export_php:method Scriptling::setMaxValueBytes(int $bytes): void
+func (s *ScriptlingVM) SetMaxValueBytes(bytes int64) {
+	if !s.ensureVM() {
+		return
+	}
+	if err := tightenLimit("max value bytes", bytes, s.policy.MaxValueBytes); err != nil {
+		s.setError(err)
+		return
+	}
+	s.vm.SetMaxValueBytes(bytes)
+	s.clearErr()
+}
+
+//export_php:method Scriptling::getMaxValueBytes(): int
+func (s *ScriptlingVM) GetMaxValueBytes() int64 {
+	if !s.ensureVM() {
+		return 0
+	}
+	s.clearErr()
+	return s.vm.MaxValueBytes()
+}
+
+//export_php:method Scriptling::getResourceUsage(): string
+func (s *ScriptlingVM) GetResourceUsage() unsafe.Pointer {
+	if !s.ensureVM() {
+		return frankenphp.PHPString("{}", false)
+	}
+	u := s.vm.ResourceUsage()
+	bytes, err := json.Marshal(map[string]any{
+		"memory_bytes":               u.MemoryBytes,
+		"peak_memory_bytes":          u.PeakMemoryBytes,
+		"allocated_bytes":            u.AllocatedBytes,
+		"memory_limit_cancellations": u.MemoryLimitCancellations,
+	})
+	if err != nil {
+		return frankenphp.PHPString("{}", false)
+	}
+	s.clearErr()
+	return frankenphp.PHPString(string(bytes), false)
 }
 
 // --- Autoload Path ---

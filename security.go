@@ -33,6 +33,12 @@ const (
 	envNetworkPolicyFile = "SCRIPTLING_NETWORK_POLICY_FILE"
 	envPolicyFile        = "SCRIPTLING_POLICY_FILE"
 
+	// Resource limits, in bytes, same env var names as the scriptling CLI.
+	// Unset or 0 = no limit. Applied to every VM; PHP may tighten them per
+	// VM (setMemoryLimit/setMaxValueBytes) but never raise or remove them.
+	envMemoryLimit   = "SCRIPTLING_MEMORY_LIMIT"
+	envMaxValueBytes = "SCRIPTLING_MAX_VALUE_BYTES"
+
 	// scriptling.secret: either point at one or more TOML files (each with
 	// a [[providers]] array in secretprovider.Config's own schema, for
 	// multiple aliased providers), or configure a single provider directly
@@ -81,6 +87,9 @@ type LibraryPolicy struct {
 	Network      *netsecurity.Config      // nil means "don't register net-capable libraries"
 	Secrets      *secretprovider.Registry // nil means "don't register scriptling.secret"
 	PluginScope  *plugin.Manager          // nil means "don't register scriptling.plugin"
+
+	MemoryLimit   int64 // bytes of estimated memory per VM; 0 means no limit
+	MaxValueBytes int64 // bytes per single string/bytes/container; 0 means no limit
 }
 
 func (p *LibraryPolicy) isEnabled(name string) bool {
@@ -104,6 +113,8 @@ func resolveGlobalPolicy() (*LibraryPolicy, error) {
 			os.Getenv(envEnabledLibraries),
 			os.Getenv(envNetworkPolicyFile),
 			os.Getenv(envPolicyFile),
+			os.Getenv(envMemoryLimit),
+			os.Getenv(envMaxValueBytes),
 		)
 		if globalPolicyErr == nil {
 			globalPolicy.Secrets, globalPolicyErr = loadSecretRegistryFromEnv()
@@ -250,10 +261,18 @@ func loadSecretRegistryFromEnv() (*secretprovider.Registry, error) {
 	return registry, nil
 }
 
-func loadPolicy(allowedPathsEnv, enabledLibsEnv, networkPolicyFileEnv, combinedPolicyFileEnv string) (*LibraryPolicy, error) {
+func loadPolicy(allowedPathsEnv, enabledLibsEnv, networkPolicyFileEnv, combinedPolicyFileEnv, memoryLimitEnv, maxValueBytesEnv string) (*LibraryPolicy, error) {
 	policy := &LibraryPolicy{
 		Enabled:      enabledSet(splitComma(enabledLibsEnv)),
 		AllowedPaths: parseAllowedPaths(allowedPathsEnv),
+	}
+
+	var err error
+	if policy.MemoryLimit, err = parseByteLimit(memoryLimitEnv); err != nil {
+		return nil, fmt.Errorf("%s: %w", envMemoryLimit, err)
+	}
+	if policy.MaxValueBytes, err = parseByteLimit(maxValueBytesEnv); err != nil {
+		return nil, fmt.Errorf("%s: %w", envMaxValueBytes, err)
 	}
 
 	var netCfg *netsecurity.Config
@@ -277,6 +296,20 @@ func loadPolicy(allowedPathsEnv, enabledLibsEnv, networkPolicyFileEnv, combinedP
 			}
 			if len(file.Filesystem.AllowedPaths) > 0 {
 				policy.AllowedPaths = file.Filesystem.AllowedPaths
+			}
+			// Keyed on whether the key was written, so a file can set a
+			// limit back to 0 (no limit) over an env var.
+			if meta.IsDefined("limits", "memory_bytes") {
+				if file.Limits.MemoryBytes < 0 {
+					return nil, fmt.Errorf("%s: %s: [limits] memory_bytes must not be negative", envPolicyFile, path)
+				}
+				policy.MemoryLimit = file.Limits.MemoryBytes
+			}
+			if meta.IsDefined("limits", "max_value_bytes") {
+				if file.Limits.MaxValueBytes < 0 {
+					return nil, fmt.Errorf("%s: %s: [limits] max_value_bytes must not be negative", envPolicyFile, path)
+				}
+				policy.MaxValueBytes = file.Limits.MaxValueBytes
 			}
 			// A [network] table with every field at its zero value (e.g.
 			// just `https_only = false`, or present purely to opt into the
@@ -320,6 +353,21 @@ func splitComma(s string) []string {
 	return out
 }
 
+// parseByteLimit parses a resource-limit env var: unset means 0 (no limit),
+// otherwise a non-negative integer number of bytes. Anything else is an
+// error, so a typo'd limit fails the VM closed rather than running unlimited.
+func parseByteLimit(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%q must be a non-negative integer number of bytes", raw)
+	}
+	return n, nil
+}
+
 // parseAllowedPaths turns SCRIPTLING_ALLOWED_PATHS into the []string the
 // fssecurity-backed registrars expect. Unset or "-" is explicit deny-all
 // (the closed-by-default posture); otherwise it's a colon-separated list of
@@ -342,7 +390,8 @@ func parseAllowedPaths(raw string) []string {
 
 // combinedPolicyFile is the schema for SCRIPTLING_POLICY_FILE: one file
 // covering libraries + filesystem + network together, for operators who'd
-// rather manage one file per vhost than several env vars.
+// rather manage one file per vhost than several env vars. The [limits] keys
+// match the scriptling CLI's own config file.
 type combinedPolicyFile struct {
 	Libraries struct {
 		Enabled []string `toml:"enabled"`
@@ -351,6 +400,10 @@ type combinedPolicyFile struct {
 		AllowedPaths []string `toml:"allowed_paths"`
 	} `toml:"filesystem"`
 	Network networkPolicyFile `toml:"network"`
+	Limits  struct {
+		MemoryBytes   int64 `toml:"memory_bytes"`
+		MaxValueBytes int64 `toml:"max_value_bytes"`
+	} `toml:"limits"`
 }
 
 // networkPolicyFile mirrors extlibs/netsecurity's own (unexported) TOML

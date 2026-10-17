@@ -170,6 +170,24 @@ $vm->eval('print("Hello from scriptling!")');
 $output = $vm->getOutput();  // "Hello from scriptling!"
 ```
 
+## Resource Limits
+
+The operator sets per-VM resource limits with `SCRIPTLING_MEMORY_LIMIT` and
+`SCRIPTLING_MAX_VALUE_BYTES` (bytes, unset or `0` = no limit), or with a
+`[limits]` table in `SCRIPTLING_POLICY_FILE` — see
+[docs/security-policy.md](docs/security-policy.md#resource-limits). PHP can
+read them, and lower them for one VM, but never raise or remove them:
+
+```php
+$vm->setMemoryLimit(16 * 1024 * 1024);   // estimated memory the VM may hold
+$vm->setMaxValueBytes(1024 * 1024);      // largest single string/bytes/container
+$vm->eval('x = "a" * 2000000');          // fails: MemoryError
+$usage = json_decode($vm->getResourceUsage(), true);  // memory_bytes, peak_memory_bytes, ...
+```
+
+A VM that goes over its memory limit has the running call cancelled with an
+error containing `memory limit exceeded`; the VM stays usable afterwards.
+
 ## Error Handling
 
 ```php
@@ -243,6 +261,16 @@ $vm->clearError();
 | `enableOutputCapture` |            | `void`   | Capture print() output |
 | `getOutput`           |            | `string` | Get captured output    |
 
+### Resource Limits
+
+| Method             | Parameters   | Return   | Description                                                                  |
+| ------------------ | ------------ | -------- | ---------------------------------------------------------------------------- |
+| `setMemoryLimit`   | `int $bytes` | `void`   | Lower this VM's memory limit (cannot exceed the operator's limit)            |
+| `getMemoryLimit`   |              | `int`    | Memory limit in force, `0` = none                                            |
+| `setMaxValueBytes` | `int $bytes` | `void`   | Lower this VM's single-value limit (cannot exceed the operator's limit)      |
+| `getMaxValueBytes` |              | `int`    | Value limit in force, `0` = none                                             |
+| `getResourceUsage` |              | `string` | JSON: `memory_bytes`, `peak_memory_bytes`, `allocated_bytes`, `memory_limit_cancellations` |
+
 ### Error Handling
 
 | Method         | Parameters | Return   | Description                     |
@@ -283,7 +311,7 @@ Builds are driven by `docker-bake.hcl` via the Makefile. Override any variable v
 | `TAG_BASE`           | `paularlott`   | Registry/namespace for image tags                  |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`  | Registry for the build cache                       |
 | `FRANKENPHP_VERSION` | `1.12.7`       | FrankenPHP version                                 |
-| `SCRIPTLING_VERSION` | `v0.25.4`      | Scriptling version                                 |
+| `SCRIPTLING_VERSION` | `v0.32.0`      | Scriptling version                                 |
 | `PHP_VERSIONS`       | `8.4.24 8.5.9` | Space-separated PHP versions (built in parallel)   |
 
 Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.25.4-php8.5.9` and `0.25.4-php8.5`).
