@@ -1,0 +1,8 @@
+# The Dockerfile copies only what it names; keep secrets, history and local
+# build output out of the build context regardless.
+.env
+.git
+.DS_Store
+tests/fixtures/plugins/
+tests/fixtures/plugins-explicit/
+tests/fixtures/plugins-http/

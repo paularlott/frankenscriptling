@@ -27,6 +27,10 @@ Notes:
   though they're always registered.
 - `scriptling.mcp` also registers its `RegisterToolHelpers`/`RegisterToon`
   companions when enabled.
+- `scriptling.mcp` reaches HTTP(S) MCP servers under the network policy. A
+  stdio MCP server (`mcp.Client("/path/to/server")`) is a subprocess the
+  script names and starts, so it is refused unless `subprocess` is enabled
+  too; `make test-security-mcp` checks this.
 - The excluded libraries are either a materially bigger blast radius than
   fs/net access (container runtime sockets) or need infrastructure this
   image doesn't wire up (the compiled-in storage-backend plugins —
@@ -77,7 +81,7 @@ CLI's config file.
 
 | Variable | `[limits]` key | Meaning |
 | --- | --- | --- |
-| `SCRIPTLING_MEMORY_LIMIT` | `memory_bytes` | Estimated memory one VM may hold in strings, bytes and containers. Going over cancels the running call with an error containing `memory limit exceeded`. The estimate is sampled, so it is approximate, and it is per VM, not a ceiling on the process. |
+| `SCRIPTLING_MEMORY_LIMIT` | `memory_bytes` | Estimated memory one VM may hold in strings, bytes, containers and the objects it creates (instances, functions, classes, iterators). Going over cancels the running call with an error containing `memory limit exceeded`. The estimate is sampled, so it is approximate, and it is per VM, not a ceiling on the process. |
 | `SCRIPTLING_MAX_VALUE_BYTES` | `max_value_bytes` | Largest single string, bytes value or container one operation may create (including read bodies and captured output). Going over raises `MemoryError` in the script. |
 
 A value that isn't a non-negative integer fails the VM closed, like any other

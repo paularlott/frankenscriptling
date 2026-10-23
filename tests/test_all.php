@@ -302,6 +302,36 @@ assert_false($lim->hasError(), "limits: PHP can clear its own limit when none is
 $lim->eval('s = "a" * 2000');
 assert_false($lim->hasError(), "limits: cleared value limit no longer enforced");
 
+echo "=== Last error survives read-only calls ===\n";
+
+$errvm = new Scriptling();
+$errvm->enableOutputCapture();
+$errvm->eval("print('before')\nraise ValueError('kept')");
+assert_true($errvm->hasError(), "lastError: failed eval sets the error");
+assert_contains($errvm->getOutput(), "before", "lastError: output still readable after the failure");
+assert_true($errvm->hasError(), "lastError: getOutput does not clear the error");
+assert_contains($errvm->getLastError(), "kept", "lastError: getLastError still reports it after getOutput");
+$errvm->getMemoryLimit();
+$errvm->getMaxValueBytes();
+$errvm->getResourceUsage();
+$errvm->getAutoloadPath();
+$errvm->listVars();
+$errvm->hasVar("nothing");
+assert_true($errvm->hasError(), "lastError: other read-only getters do not clear the error");
+$errvm->clearError();
+assert_false($errvm->hasError(), "lastError: clearError clears it");
+
+echo "=== Build info ===\n";
+
+$info = json_decode($vm->getBuildInfo(), true);
+assert_true(is_array($info), "buildInfo: JSON object");
+foreach (["image", "revision", "scriptling", "frankenphp", "php"] as $k) {
+    assert_true(isset($info[$k]) && $info[$k] !== "", "buildInfo: has $k");
+}
+assert_eq($info["scriptling"], $vm->getScriptlingVersion(), "buildInfo: scriptling matches getScriptlingVersion");
+assert_eq($info["image"], $vm->getImageVersion(), "buildInfo: image matches getImageVersion");
+assert_true($info["php"] === PHP_VERSION, "buildInfo: php is the running PHP version");
+
 echo "=== VM Isolation ===\n";
 
 $iso1 = new Scriptling();

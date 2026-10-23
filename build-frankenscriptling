@@ -1,0 +1,40 @@
+#!/bin/sh
+# Build the FrankenPHP binary with the Scriptling extension and the standard
+# Caddy module set. Ships in the published builder image so downstream images
+# can add their own Caddy modules without copying this build:
+#
+#   FROM <registry>/frankenscriptling:<version>-php<php>-builder AS builder
+#   RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3
+#
+# Any arguments are passed straight to `xcaddy build` after the standard
+# modules. The binary goes to $FRANKENSCRIPTLING_OUTPUT
+# (default /usr/local/bin/frankenphp).
+set -eu
+
+OUTPUT="${FRANKENSCRIPTLING_OUTPUT:-/usr/local/bin/frankenphp}"
+
+# Same identity as the official binary: `frankenphp version` and the Server header.
+VERSION_LDFLAGS="-X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP v${FRANKENSCRIPTLING_FRANKENPHP_VERSION} PHP $(php-config --version) Caddy'"
+VERSION_LDFLAGS="${VERSION_LDFLAGS} -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp'"
+VERSION_LDFLAGS="${VERSION_LDFLAGS} -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'"
+
+# Build tags and cgo flags as the official build (go.sh): append to the
+# builder image's CGO_CFLAGS/CGO_LDFLAGS (-O2, hardening, FRANKENPHP_VERSION)
+# rather than replacing them. deprecated_topic,deprecated_claim enable the
+# Mercure hub's `protocol_version_compatibility 8` migration mode;
+# mtls-cflags.sh adds -mtls-size=12 on arm64 when the toolchain supports it.
+CGO_ENABLED=1 \
+XCADDY_GO_BUILD_FLAGS="-ldflags \"-w -s ${VERSION_LDFLAGS}\" -tags nobadger,nomysql,nopgx,deprecated_topic,deprecated_claim" \
+CGO_CFLAGS="${CGO_CFLAGS:-} -D_GNU_SOURCE $(php-config --includes) $(sh /frankenphp-src/mtls-cflags.sh)" \
+CGO_LDFLAGS="${CGO_LDFLAGS:-} $(php-config --ldflags) $(php-config --libs)" \
+xcaddy build \
+    --output "${OUTPUT}" \
+    --with "github.com/dunglas/frankenphp/caddy@v${FRANKENSCRIPTLING_FRANKENPHP_VERSION}" \
+    --with "github.com/dunglas/frankenphp=/frankenphp-src" \
+    --with github.com/dunglas/mercure/caddy@latest \
+    --with github.com/dunglas/vulcain/caddy@latest \
+    --with github.com/dunglas/caddy-cbrotli@latest \
+    --with github.com/caddy-dns/cloudflare@latest \
+    --with github.com/caddyserver/transform-encoder@latest \
+    --with "${FRANKENSCRIPTLING_GO_MODULE}=${FRANKENSCRIPTLING_SRC}" \
+    "$@"

@@ -2,7 +2,15 @@
 
 A Docker image combining [FrankenPHP](https://frankenphp.dev/) with the [Scriptling](https://github.com/paularlott/scriptling) scripting language, exposed as a PHP class.
 
-Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling](https://hub.docker.com/r/paularlott/frankenscriptling).
+Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling](https://hub.docker.com/r/paularlott/frankenscriptling):
+
+```bash
+docker pull paularlott/frankenscriptling:latest          # newest release, newest PHP line
+docker pull paularlott/frankenscriptling:php8.4          # newest release for PHP 8.4
+docker pull paularlott/frankenscriptling:0.33.0-php8.5   # a fixed release, pin this in production
+```
+
+See [Image tags](#image-tags) for what each tag means and which ones move.
 
 ## Quick Start
 
@@ -11,7 +19,10 @@ Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling
 make
 
 # Build a specific PHP version
-make frankenscriptling-8.5.9
+make frankenscriptling-8.5.12
+
+# Build and push a test build from an uncommitted checkout (0.0.0-dev.<sha> tags only)
+make dev-push
 
 # Print the resolved bake configuration without building
 make print
@@ -283,7 +294,9 @@ $vm->clearError();
 
 | Method                 | Parameters | Return   | Description                |
 | ---------------------- | ---------- | -------- | -------------------------- |
-| `getScriptlingVersion` |            | `string` | Scriptling library version |
+| `getScriptlingVersion` |            | `string` | Scriptling library version                                              |
+| `getImageVersion`      |            | `string` | Version of this image (its tag; `0.0.0-dev` outside a release build)    |
+| `getBuildInfo`         |            | `string` | JSON: `image`, `revision`, `scriptling`, `frankenphp`, `php` versions    |
 
 ## Architecture
 
@@ -304,17 +317,79 @@ Each `new Scriptling()` creates an isolated VM with its own environment. The VM 
 
 ## Build Configuration
 
-Builds are driven by `docker-bake.hcl` via the Makefile. Override any variable via the environment, a local `.env` file (gitignored), or the command line.
+Builds go through the Makefile, which is the one place that sets versions and
+exports them to `docker-bake.hcl`; a bare `docker buildx bake` fails on
+purpose. Override any variable via the environment, a local `.env` file
+(gitignored), or the command line.
 
-| Variable             | Default        | Description                                        |
-| -------------------- | -------------- | -------------------------------------------------- |
-| `TAG_BASE`           | `paularlott`   | Registry/namespace for image tags                  |
-| `CACHE_TAG_BASE`     | `$(TAG_BASE)`  | Registry for the build cache                       |
-| `FRANKENPHP_VERSION` | `1.12.7`       | FrankenPHP version                                 |
-| `SCRIPTLING_VERSION` | `v0.32.0`      | Scriptling version                                 |
-| `PHP_VERSIONS`       | `8.4.24 8.5.9` | Space-separated PHP versions (built in parallel)   |
+| Variable             | Default         | Description                                                  |
+| -------------------- | --------------- | ------------------------------------------------------------ |
+| `TAG_BASE`           | `paularlott`    | Registry/namespace for image tags                            |
+| `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
+| `FRANKENPHP_VERSION` | `1.13.2`        | FrankenPHP version                                           |
+| `SCRIPTLING_VERSION` | `v0.33.0`       | Scriptling version                                           |
+| `PHP_VERSIONS`       | `8.4.27 8.5.12` | Space-separated PHP versions (built in parallel)             |
+| `VERSION`            | from git        | Image version: the tag on HEAD (`v0.33.0` becomes `0.33.0`)  |
 
-Images are tagged `<scriptling>-php<php>` and `<scriptling>-php<major.minor>` (e.g. `0.25.4-php8.5.9` and `0.25.4-php8.5`).
+`make version` prints what a build would use. `make all` and
+`make frankenscriptling-<php>` build and push a release and refuse to run
+unless HEAD is a clean checkout at a version tag; `make dev` builds the
+default PHP version for this machine as a local image with a `0.0.0-dev.<sha>`
+version and no push.
+
+### Image tags
+
+The image has its own version, independent of the scriptling version inside
+it: a FrankenPHP security rebuild or an extension fix is a new image version
+with the same scriptling. What went into a build is recorded on the image as
+labels (`org.opencontainers.image.version`, `org.opencontainers.image.revision`,
+`dev.scriptling.scriptling-version`, `dev.scriptling.frankenphp-version`,
+`dev.scriptling.php-version`, shown by `docker inspect`) and reported from
+inside by `Scriptling::getBuildInfo()`.
+
+| Tag                  | Moves? | Meaning                                                   |
+| -------------------- | ------ | --------------------------------------------------------- |
+| `0.33.0-php8.5.12`   | no     | release 0.33.0 on exactly PHP 8.5.12; built once           |
+| `0.33.0-php8.5`      | no     | the same build, named by PHP line                          |
+| `php8.5`, `php8.4`   | yes    | the newest release for that PHP line                       |
+| `latest`             | yes    | the newest release on the newest PHP line                  |
+
+Builder images are tagged the way FrankenPHP tags its own
+(`dunglas/frankenphp:1.13.2-builder-php8.4`):
+
+| Tag                        | Moves? | Meaning                                              |
+| -------------------------- | ------ | ---------------------------------------------------- |
+| `0.33.0-builder-php8.5.12` | no     | the builder for `0.33.0-php8.5.12`                   |
+| `0.33.0-builder-php8.5`    | no     | the same build, named by PHP line                    |
+| `builder-php8.5`           | yes    | the builder for the newest release on that PHP line  |
+| `builder`                  | yes    | the builder for `latest`                             |
+
+A builder is the build stage with libphp, xcaddy and the prepared extension
+source. Use one to add your own Caddy modules without copying this build:
+
+```dockerfile
+FROM paularlott/frankenscriptling:0.33.0-builder-php8.5 AS builder
+RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3
+
+FROM paularlott/frankenscriptling:0.33.0-php8.5
+COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
+RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
+```
+
+`build-frankenscriptling` uses the same Caddy modules and build tags as the
+published binary (Mercure, Vulcain, cbrotli, Cloudflare DNS,
+transform-encoder) and appends its arguments to `xcaddy build`. Pair a builder
+with the runtime tag of the same release so libphp matches.
+
+Pin a fixed tag (or a digest, `paularlott/frankenscriptling@sha256:…`) in
+production; use the floating tags to track releases. Versions bump by patch
+for rebuilds and extension fixes, by minor for a scriptling upgrade, and by
+major if the PHP API or the security-policy semantics change; `CHANGELOG.md`
+maps each image version to the scriptling and FrankenPHP versions in it. The
+numbering starts at 0.33.0, matching the scriptling release it ships;
+earlier `<scriptling>-php<php>` tags were retired when the scheme changed.
+
+To release: tag the commit (`git tag v0.33.0`), then `make all`.
 
 ## Security Policy
 
@@ -424,9 +499,15 @@ echo $vm->eval('import re; re.findall(r"\\d+", "abc123def456")');  // "[123, 456
 
 - **Scriptling** - Full Scriptling VM integration class
 
+The binary also carries FrankenPHP's standard Caddy modules, including the
+[Mercure hub](https://frankenphp.dev/docs/mercure/) (`mercure` directive and
+`mercure_publish()`), built with the same `deprecated_topic`/`deprecated_claim`
+tags as the official image.
+
 ## Notes
 
 - The Scriptling language uses Python-like syntax (e.g., `True`/`False`, `def`, `lambda`, `import`)
 - The `.` operator in scriptling is attribute access (like Python), not string concatenation
 - Complex data (lists, dicts) is passed via JSON strings
 - Each `Scriptling` instance is independent - no shared state between PHP objects
+- FrankenPHP is built from a patched copy so the `Scriptling` class survives config reloads (admin API `/load`, `--watch`); stock FrankenPHP only registers Go extensions on the first PHP startup ([php/frankenphp#2572](https://github.com/php/frankenphp/issues/2572)). Drop the patch in the `Dockerfile` once that is fixed upstream.
