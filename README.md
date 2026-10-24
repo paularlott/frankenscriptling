@@ -407,7 +407,7 @@ own FrankenPHP binary, so it is less than half the size (about 470MB against
 1GB). Everything else matches: environment (`PHP_INI_DIR`, `PHPIZE_DEPS`, …),
 entrypoint, `/app`, ports, health check.
 
-Two differences from the official image:
+Three differences from the official image:
 
 - `frankenphp` already has `cap_net_bind_service`, and `/config` and `/data`
   belong to `www-data`, so `USER www-data` is all it takes to run without root
@@ -418,6 +418,9 @@ Two differences from the official image:
   themselves when they need it and remove it afterwards, keeping only the
   libraries the new extensions link against — the official Alpine images do
   the same. A toolchain you installed yourself is left alone.
+- `session.upload_progress.enabled` is off (CVE-2026-115560), set in
+  `$PHP_INI_DIR/conf.d/zz-security.ini` so it loads after your own `php.ini`
+  and ini files. Delete that file in your image if you need upload progress.
 
 So the usual ways of adding extensions work unchanged:
 
