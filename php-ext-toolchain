@@ -1,0 +1,85 @@
+#!/bin/sh
+# Installed as docker-php-ext-configure, docker-php-ext-install,
+# docker-php-ext-enable and install-php-extensions. The runtime image has no
+# compiler, so — as the official Alpine PHP images do in these same scripts —
+# the build toolchain ($PHPIZE_DEPS) is installed when one is needed and
+# removed again afterwards, keeping only the libraries the built extensions
+# link against. A toolchain the user installed themselves is never removed.
+#
+#   docker-php-ext-configure  installs the toolchain and leaves it in place for
+#                             the docker-php-ext-install that follows
+#   docker-php-ext-install    installs it if needed, removes it at the end
+#   install-php-extensions    the same
+#   docker-php-ext-enable     only needs readelf (binutils)
+#
+# The originals are in /usr/local/libexec/frankenscriptling.
+set -eu
+
+name=$(basename "$0")
+real="/usr/local/libexec/frankenscriptling/${name}"
+
+# sudo resets the environment; fall back to the image's values.
+: "${PHPIZE_DEPS:=autoconf dpkg-dev file g++ gcc libc-dev make pkg-config re2c}"
+: "${PHP_INI_DIR:=/usr/local/etc/php}"
+export PHPIZE_DEPS PHP_INI_DIR
+
+# apt-mark showmanual from before the toolchain was added; present while a
+# toolchain installed by this script is still in place.
+state=/var/lib/frankenscriptling/php-ext-toolchain
+
+# Called from another of these scripts (install-php-extensions runs the
+# docker-php-ext-* ones): the outer call owns the toolchain.
+if [ -n "${FRANKENSCRIPTLING_PHP_EXT_TOOLCHAIN:-}" ]; then
+	exec "$real" "$@"
+fi
+
+case "$name" in
+	docker-php-ext-enable) packages="binutils"; needs="readelf" ;;
+	*) packages="${PHPIZE_DEPS}"; needs="gcc make" ;;
+esac
+
+missing=
+for cmd in $needs; do
+	command -v "$cmd" > /dev/null 2>&1 || missing=1
+done
+
+if [ -n "$missing" ] && [ ! -f "$state" ]; then
+	mkdir -p "$(dirname "$state")"
+	apt-mark showmanual > "$state"
+	apt-get update
+	# shellcheck disable=SC2086
+	apt-get install -y --no-install-recommends $packages
+fi
+
+remove_toolchain() {
+	[ -f "$state" ] || return 0
+
+	# As the official images clean up after building PHP: everything becomes
+	# removable except what was installed before, and what anything under
+	# /usr/local (PHP, its extensions, FrankenPHP) links against.
+	apt-mark auto '.*' > /dev/null
+	# shellcheck disable=SC2046
+	apt-mark manual $(cat "$state") > /dev/null
+	find /usr/local -type f \( -name '*.so' -o -name '*.so.*' -o -perm /0111 \) -exec ldd '{}' ';' 2> /dev/null \
+		| awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) next; print so }' \
+		| sort -u \
+		| xargs -r -n1 readlink -f \
+		| xargs -r dpkg-query --search 2> /dev/null \
+		| grep -v '^diversion' \
+		| cut -d: -f1 \
+		| sort -u \
+		| xargs -r apt-mark manual > /dev/null
+	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false
+	rm -rf /var/lib/apt/lists/* "$state"
+}
+
+export FRANKENSCRIPTLING_PHP_EXT_TOOLCHAIN=1
+status=0
+"$real" "$@" || status=$?
+
+# configure keeps the toolchain for the install step that follows it
+if [ "$name" != docker-php-ext-configure ]; then
+	remove_toolchain
+fi
+
+exit "$status"

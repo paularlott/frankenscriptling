@@ -369,12 +369,17 @@ source. Use one to add your own Caddy modules without copying this build:
 
 ```dockerfile
 FROM paularlott/frankenscriptling:0.33.0-builder-php8.5 AS builder
-RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3
+RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3 \
+    && setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
 
 FROM paularlott/frankenscriptling:0.33.0-php8.5
 COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
-RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
 ```
+
+The new binary has no capabilities of its own, so `setcap` it in the builder
+stage: `COPY` keeps the capability (letting a non-root user bind ports 80/443),
+whereas a `setcap` after the `COPY` stores the binary a second time in a new
+layer.
 
 `build-frankenscriptling` uses the same Caddy modules and build tags as the
 published binary (Mercure, Vulcain, cbrotli, Cloudflare DNS,
@@ -390,6 +395,57 @@ numbering starts at 0.33.0, matching the scriptling release it ships;
 earlier `<scriptling>-php<php>` tags were retired when the scheme changed.
 
 To release: tag the commit (`git tag v0.33.0`), then `make all`.
+
+## Image and PHP extensions
+
+The runtime image is the official FrankenPHP image rebuilt on a bare
+`debian:trixie-slim`: the same PHP (`/usr/local`, plus the PHP source in
+`/usr/src` for building extensions), the Scriptling-enabled `frankenphp`, and
+only the Debian libraries they link against. It leaves out the compiler
+toolchain the official image keeps (`$PHPIZE_DEPS`, ~350MB) and that image's
+own FrankenPHP binary, so it is less than half the size (about 470MB against
+1GB). Everything else matches: environment (`PHP_INI_DIR`, `PHPIZE_DEPS`, …),
+entrypoint, `/app`, ports, health check.
+
+Two differences from the official image:
+
+- `frankenphp` already has `cap_net_bind_service`, and `/config` and `/data`
+  belong to `www-data`, so `USER www-data` is all it takes to run without root
+  (FrankenPHP's rootless recipe works too, but its `setcap` copies the binary
+  into a new layer).
+- There is no compiler in the image. `install-php-extensions` and
+  `docker-php-ext-configure` / `-install` / `-enable` install the toolchain
+  themselves when they need it and remove it afterwards, keeping only the
+  libraries the new extensions link against — the official Alpine images do
+  the same. A toolchain you installed yourself is left alone.
+
+So the usual ways of adding extensions work unchanged:
+
+```dockerfile
+FROM paularlott/frankenscriptling:php8.5
+
+# FrankenPHP docs: core and PECL extensions alike
+RUN install-php-extensions pdo_mysql gd intl zip redis xdebug
+
+# Official PHP image docs: core extensions
+RUN apt-get update && apt-get install -y libfreetype-dev libjpeg62-turbo-dev libpng-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) gd
+```
+
+Keep `docker-php-ext-configure` and `docker-php-ext-install` in the same `RUN`:
+in separate ones the toolchain stays in the configure layer.
+
+A bare `pecl install` (or `phpize` on your own sources) has no such hook and
+fails with `Cannot find autoconf`, as on the official Alpine images. Use
+`install-php-extensions` for PECL extensions, or install the toolchain in the
+same `RUN` and remove it yourself:
+
+```dockerfile
+RUN apt-get update && apt-get install -y $PHPIZE_DEPS \
+    && pecl install redis && docker-php-ext-enable redis \
+    && apt-get purge -y --auto-remove $PHPIZE_DEPS && rm -rf /var/lib/apt/lists/*
+```
 
 ## Security Policy
 

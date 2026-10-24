@@ -95,16 +95,79 @@ COPY --from=test-plugin /out/plugins/test-plugin /plugins/test-plugin
 COPY --from=test-plugin /out/plugins-explicit/second-plugin /plugins-explicit/second-plugin
 COPY --from=test-plugin /out/plugins-http/http-plugin /plugins-http/http-plugin
 
-FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS runtime
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends procps vim libcap2-bin \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY Caddyfile /etc/frankenphp/Caddyfile
+# PHP from the official FrankenPHP image with our binary in place of its own.
+# The runtime copies /usr/local and /usr/src from here onto a bare
+# trixie-slim, which leaves out the compiler toolchain the official image keeps
+# (~350MB) and its original FrankenPHP binary. setcap here: COPY keeps the
+# capability, so the runtime needs no extra layer for it.
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS php
 
 COPY --from=build /usr/local/bin/frankenphp /usr/local/bin/frankenphp
+COPY --chmod=0755 php-ext-toolchain /usr/local/libexec/frankenscriptling/php-ext-toolchain
 
-# COPY drops the file capability the official image sets on its binary; restore
-# it so a non-root user can still bind ports 80/443.
-RUN setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
+RUN set -eux; \
+    setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp; \
+    \
+    # The extension scripts get the toolchain themselves (see php-ext-toolchain)
+    for f in docker-php-ext-configure docker-php-ext-install docker-php-ext-enable install-php-extensions; do \
+        mv "/usr/local/bin/$f" "/usr/local/libexec/frankenscriptling/$f"; \
+        ln -s ../libexec/frankenscriptling/php-ext-toolchain "/usr/local/bin/$f"; \
+    done; \
+    \
+    # The Debian packages PHP, its extensions and FrankenPHP link against
+    find /usr/local -type f \( -name '*.so' -o -name '*.so.*' -o -perm /0111 \) -exec ldd '{}' ';' 2> /dev/null \
+        | awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) next; print so }' \
+        | sort -u \
+        | xargs -r -n1 readlink -f \
+        | xargs -r dpkg-query --search 2> /dev/null \
+        | grep -v '^diversion' \
+        | cut -d: -f1 \
+        | sort -u > /runtime-packages; \
+    cat /runtime-packages
+
+FROM debian:trixie-slim AS runtime
+
+ARG PHP_VERSION=8.5.12
+
+# As the official PHP / FrankenPHP images
+ENV PHPIZE_DEPS="autoconf dpkg-dev file g++ gcc libc-dev make pkg-config re2c" \
+    PHP_INI_DIR=/usr/local/etc/php \
+    PHP_VERSION=${PHP_VERSION} \
+    PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64" \
+    PHP_CPPFLAGS="-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64" \
+    PHP_LDFLAGS="-Wl,-O1 -pie" \
+    XDG_CONFIG_HOME=/config \
+    XDG_DATA_HOME=/data \
+    GODEBUG=cgocheck=0
+
+COPY --from=php /runtime-packages /tmp/runtime-packages
+
+RUN set -eux; \
+    # Debian's own PHP packages must never replace this PHP
+    { echo 'Package: php*'; echo 'Pin: release *'; echo 'Pin-Priority: -1'; } > /etc/apt/preferences.d/no-debian-php; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl xz-utils mailcap libcap2-bin procps vim-tiny \
+        $(cat /tmp/runtime-packages); \
+    rm -rf /var/lib/apt/lists/* /tmp/runtime-packages; \
+    mkdir -p /var/www/html /app/public /config/caddy /data/caddy /etc/caddy /etc/frankenphp; \
+    chown www-data:www-data /var/www/html; \
+    chmod 1777 /var/www/html; \
+    # Writable by www-data so FrankenPHP can run as non-root
+    chown -R www-data:www-data /config /data
+
+COPY --from=php /usr/local /usr/local
+# PHP source: docker-php-ext-install builds core extensions (gd, mysqli, …) from it
+COPY --from=php /usr/src /usr/src
+COPY Caddyfile /etc/frankenphp/Caddyfile
+
+RUN ldconfig
+
+WORKDIR /app
+
+EXPOSE 80 443 443/udp 2019
+
+HEALTHCHECK CMD curl -f http://localhost:2019/metrics || exit 1
+
+ENTRYPOINT ["docker-php-entrypoint"]
+CMD ["--config", "/etc/frankenphp/Caddyfile", "--adapter", "caddyfile"]
