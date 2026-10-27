@@ -131,6 +131,46 @@ test:
 		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
 		frankenphp php-cli /app/tests/test_all.php
 
+.PHONY: test-php-functions
+## Run the PHP-functions tests: calls, conversions, exceptions, scope, leaks, then exit() and fatal errors (each must end the process cleanly)
+test-php-functions:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_php_functions.php
+	@for spec in \
+		"exit:3:QUITTING:NEVER AFTER" \
+		"exit_in_try:3:QUITTING:NEVER AFTER" \
+		"fatal:255:Allowed memory size:NEVER AFTER CAUGHT" \
+		"fatal_caught:255:Allowed memory size:NEVER AFTER CAUGHT" \
+		"fatal_timeout:255:Maximum execution time:NEVER AFTER" \
+	; do \
+		mode=$${spec%%:*}; rest=$${spec#*:}; want=$${rest%%:*}; rest=$${rest#*:}; expect=$${rest%%:*}; refuse=$${rest#*:}; \
+		out=$$(docker run --rm -v $(CURDIR)/tests:/app/tests:ro \
+			$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+			frankenphp php-cli /app/tests/test_php_functions_exit.php $$mode 2>&1); code=$$?; \
+		ok=1; [ "$$code" = "$$want" ] || ok=0; \
+		echo "$$out" | grep -q "$$expect" || ok=0; \
+		echo "$$out" | grep -q "SHUTDOWN" || ok=0; \
+		for word in $$refuse; do echo "$$out" | grep -qx "$$word" && ok=0; done; \
+		if [ $$ok = 1 ]; then echo "PASS $$mode (exit $$code)"; \
+		else echo "FAIL $$mode: exit $$code (want $$want), output:"; echo "$$out" | sed 's/^/    /'; exit 1; fi; \
+	done
+
+.PHONY: test-php-functions-server
+## Run the PHP-functions server tests: thousands of concurrent requests in classic and worker mode, each must get its own data back and worker memory must not grow
+test-php-functions-server:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		sh -c 'frankenphp php-server --listen 127.0.0.1:8080 --root /app/tests/web >/tmp/classic.log 2>&1 & \
+			frankenphp php-server --listen 127.0.0.1:8081 --root /app/tests/web --worker /app/tests/web/php_functions_worker.php >/tmp/worker.log 2>&1 & \
+			sleep 2; rc=0; \
+			frankenphp php-cli /app/tests/test_php_functions_server.php http://127.0.0.1:8080/php_functions.php 3000 48 0 || rc=1; \
+			frankenphp php-cli /app/tests/test_php_functions_server.php http://127.0.0.1:8081/php_functions_worker.php 5000 48 1 || rc=1; \
+			if grep -qi "panic\|SIGSEGV\|SIGABRT\|heap corrupted" /tmp/classic.log /tmp/worker.log; then echo "FAIL server log:"; tail -30 /tmp/classic.log /tmp/worker.log; rc=1; fi; \
+			exit $$rc'
+
 .PHONY: test-security
 ## Run security-policy tests with fs/net libraries enabled and restricted
 test-security:

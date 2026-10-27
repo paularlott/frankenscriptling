@@ -20,7 +20,7 @@ COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 
 WORKDIR /app
 
-COPY scriptling_ext.go security.go ./
+COPY scriptling_ext.go security.go php_functions.go ./
 
 # buildinfo.go carries the versions Scriptling::getBuildInfo() reports; the
 # checked-in copy holds dev placeholders, this one the real build.

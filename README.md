@@ -7,7 +7,7 @@ Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling
 ```bash
 docker pull paularlott/frankenscriptling:latest          # newest release, newest PHP line
 docker pull paularlott/frankenscriptling:php8.4          # newest release for PHP 8.4
-docker pull paularlott/frankenscriptling:0.33.0-php8.5   # a fixed release, pin this in production
+docker pull paularlott/frankenscriptling:0.34.0-php8.5   # a fixed release, pin this in production
 ```
 
 See [Image tags](#image-tags) for what each tag means and which ones move.
@@ -29,6 +29,8 @@ make print
 
 # Run tests against the default PHP version
 make test
+make test-php-functions   # PHP functions called from scripts, incl. exit()/fatal errors
+make test-php-functions-server   # the same under concurrent load, classic and worker mode
 ```
 
 ## Usage
@@ -135,6 +137,71 @@ $vm->registerScriptFunc("hello", 'lambda: "Hello!"');
 $result = $vm->callFunction("hello", "");         // "Hello!"
 ```
 
+## Calling PHP functions
+
+`eval()`, `evalWithTimeout()`, `evalFile()` and `callFunction()` take an
+optional last argument: an array of name => PHP callable. Each becomes a
+function the script can call, for that call only:
+
+```php
+$customers = [42 => ['name' => 'Acme Pty Ltd', 'balance' => 1250.50]];
+
+$php = [
+    'get_customer' => fn(int $id) => $customers[$id] ?? null,      // closure
+    'upper'        => 'strtoupper',                                // function name
+    'greet'        => [new Greeter('Hello'), 'greet'],             // [object, method]
+    'shout'        => 'Greeter::shout',                            // static method
+];
+
+echo $vm->eval(<<<'PY'
+c = get_customer(42)
+f"{upper(c['name'])} owes {c['balance'] * 1.1:.2f}"
+PY, $php);                                         // 'ACME PTY LTD owes 1375.55'
+
+echo $vm->evalWithTimeout(500, 'upper("hello")', $php);   // 'HELLO'
+echo $vm->evalFile('/app/scripts/report.py', $php);
+
+// A script function defined now and called later gets them at call time
+$vm->registerScriptFunc('describe', <<<'PY'
+def describe(id):
+    c = get_customer(id)
+    return "unknown" if c is None else upper(c["name"])
+PY);
+echo $vm->callFunction('describe', '[42]', $php);         // 'ACME PTY LTD'
+```
+
+Keep the array in a variable and pass it to each call that needs it.
+
+- **Arguments and return values** convert both ways: None/null, bools, ints,
+  floats and strings as themselves; lists and tuples become PHP lists; dicts
+  become associative arrays in the same key order, and PHP arrays come back as
+  lists (when they are lists) or dicts. Bytes become a string. Anything else
+  (objects, functions, resources) is a `TypeError` in the script.
+- **Keyword arguments** become PHP named arguments: `add(1, c=5)` calls
+  `$add(1, c: 5)`.
+- **PHP exceptions** become Scriptling exceptions the script can catch:
+  `TypeError` and `ArgumentCountError` as `TypeError`, `ValueError` and
+  `InvalidArgumentException` as `ValueError`, `DivisionByZeroError` as
+  `ZeroDivisionError`, `OutOfRangeException` as `IndexError`, everything else
+  as `RuntimeError`; `str(e)` is the PHP message. Uncaught, it ends the script
+  like any script error (`hasError()`, `getLastError()`); it is not rethrown
+  in PHP.
+- **`exit()` or a fatal error** (memory limit, `max_execution_time`) in a PHP
+  function ends the request, exactly as in plain PHP: the script stops (it
+  cannot catch it), PHP code after the call does not run, and shutdown
+  functions do. A fatal error exits with status 255.
+- **Only during the call.** The functions are removed when the call returns
+  (a variable of the same name is restored), so a later call without the
+  array cannot reach them. A reference the script stored (`f = upper`), or a
+  call from a background task or thread, raises `RuntimeError` instead of
+  calling PHP. Nothing is kept between calls, so there is no leak in worker
+  mode.
+- **Not sandboxed.** A PHP function runs as ordinary PHP: the Scriptling
+  security policy (filesystem, network) does not apply to what it does. Pass
+  only functions the script should be able to use.
+- A timeout cannot interrupt a PHP function; it stops the script once the
+  function returns. Output (`echo`) from a PHP function goes to PHP's output.
+
 ## Autoload Path
 
 Load libraries from the filesystem automatically. **The autoload path must be set before the first `eval()`/`import()`/`callFunction()` call**, because the VM is lazily initialized on first use:
@@ -213,11 +280,14 @@ $vm->clearError();
 
 ### Evaluation
 
-| Method            | Parameters                     | Return   | Description              |
-| ----------------- | ------------------------------ | -------- | ------------------------ |
-| `eval`            | `string $code`                 | `string` | Evaluate scriptling code |
-| `evalWithTimeout` | `int $timeoutMs, string $code` | `string` | Evaluate with timeout    |
-| `evalFile`        | `string $path`                 | `string` | Evaluate a .sling file   |
+| Method            | Parameters                                               | Return   | Description              |
+| ----------------- | -------------------------------------------------------- | -------- | ------------------------ |
+| `eval`            | `string $code, array $functions = []`                    | `string` | Evaluate scriptling code |
+| `evalWithTimeout` | `int $timeoutMs, string $code, array $functions = []`    | `string` | Evaluate with timeout    |
+| `evalFile`        | `string $path, array $functions = []`                    | `string` | Evaluate a .sling file   |
+
+`$functions`: PHP functions the script can call during this call, see
+[Calling PHP functions](#calling-php-functions).
 
 ### Variables
 
@@ -253,9 +323,9 @@ $vm->clearError();
 
 ### Functions
 
-| Method         | Parameters                       | Return   | Description                    |
-| -------------- | -------------------------------- | -------- | ------------------------------ |
-| `callFunction` | `string $name, string $argsJSON` | `string` | Call a function with JSON args |
+| Method         | Parameters                                                 | Return   | Description                    |
+| -------------- | ---------------------------------------------------------- | -------- | ------------------------------ |
+| `callFunction` | `string $name, string $argsJSON, array $functions = []`    | `string` | Call a function with JSON args |
 
 ### Autoload Path
 
@@ -315,6 +385,11 @@ Scriptling Go VM (github.com/paularlott/scriptling)
 
 Each `new Scriptling()` creates an isolated VM with its own environment. The VM is lazily initialized on first use, and all standard and extension libraries are registered automatically.
 
+PHP functions passed to `eval()` and friends are bound into that VM for the
+one call (`php_functions.go`): the extension calls them on the same PHP
+thread with `zend_call_function`, converting values in both directions, and
+removes them before returning.
+
 ## Build Configuration
 
 Builds go through the Makefile, which is the one place that sets versions and
@@ -330,7 +405,7 @@ purpose. Override any variable via the environment, a local `.env` file
 | `GO_VERSION`         | `1.27.3`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
 | `SCRIPTLING_VERSION` | `v0.33.0`       | Scriptling version                                           |
 | `PHP_VERSIONS`       | `8.4.27 8.5.12` | Space-separated PHP versions (built in parallel)             |
-| `VERSION`            | from git        | Image version: the tag on HEAD (`v0.33.0` becomes `0.33.0`)  |
+| `VERSION`            | from git        | Image version: the tag on HEAD (`v0.34.0` becomes `0.34.0`)  |
 
 `make version` prints what a build would use. `make all` and
 `make frankenscriptling-<php>` build and push a release and refuse to run
@@ -350,8 +425,8 @@ inside by `Scriptling::getBuildInfo()`.
 
 | Tag                  | Moves? | Meaning                                                   |
 | -------------------- | ------ | --------------------------------------------------------- |
-| `0.33.0-php8.5.12`   | no     | release 0.33.0 on exactly PHP 8.5.12; built once           |
-| `0.33.0-php8.5`      | no     | the same build, named by PHP line                          |
+| `0.34.0-php8.5.12`   | no     | release 0.34.0 on exactly PHP 8.5.12; built once           |
+| `0.34.0-php8.5`      | no     | the same build, named by PHP line                          |
 | `php8.5`, `php8.4`   | yes    | the newest release for that PHP line                       |
 | `latest`             | yes    | the newest release on the newest PHP line                  |
 
@@ -360,8 +435,8 @@ Builder images are tagged the way FrankenPHP tags its own
 
 | Tag                        | Moves? | Meaning                                              |
 | -------------------------- | ------ | ---------------------------------------------------- |
-| `0.33.0-builder-php8.5.12` | no     | the builder for `0.33.0-php8.5.12`                   |
-| `0.33.0-builder-php8.5`    | no     | the same build, named by PHP line                    |
+| `0.34.0-builder-php8.5.12` | no     | the builder for `0.34.0-php8.5.12`                   |
+| `0.34.0-builder-php8.5`    | no     | the same build, named by PHP line                    |
 | `builder-php8.5`           | yes    | the builder for the newest release on that PHP line  |
 | `builder`                  | yes    | the builder for `latest`                             |
 
@@ -369,11 +444,11 @@ A builder is the build stage with libphp, xcaddy and the prepared extension
 source. Use one to add your own Caddy modules without copying this build:
 
 ```dockerfile
-FROM paularlott/frankenscriptling:0.33.0-builder-php8.5 AS builder
+FROM paularlott/frankenscriptling:0.34.0-builder-php8.5 AS builder
 RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3 \
     && setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
 
-FROM paularlott/frankenscriptling:0.33.0-php8.5
+FROM paularlott/frankenscriptling:0.34.0-php8.5
 COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 ```
 
@@ -389,13 +464,14 @@ with the runtime tag of the same release so libphp matches.
 
 Pin a fixed tag (or a digest, `paularlott/frankenscriptling@sha256:…`) in
 production; use the floating tags to track releases. Versions bump by patch
-for rebuilds and extension fixes, by minor for a scriptling upgrade, and by
-major if the PHP API or the security-policy semantics change; `CHANGELOG.md`
+for rebuilds and extension fixes, by minor for a scriptling upgrade or a
+backwards-compatible PHP API addition, and by major if the PHP API or the
+security-policy semantics change; `CHANGELOG.md`
 maps each image version to the scriptling and FrankenPHP versions in it. The
 numbering starts at 0.33.0, matching the scriptling release it ships;
 earlier `<scriptling>-php<php>` tags were retired when the scheme changed.
 
-To release: tag the commit (`git tag v0.33.0`), then `make all`.
+To release: tag the commit (`git tag v0.34.0`), then `make all`.
 
 ## Image and PHP extensions
 
@@ -568,6 +644,6 @@ tags as the official image.
 
 - The Scriptling language uses Python-like syntax (e.g., `True`/`False`, `def`, `lambda`, `import`)
 - The `.` operator in scriptling is attribute access (like Python), not string concatenation
-- Complex data (lists, dicts) is passed via JSON strings
+- Complex data (lists, dicts) is passed via JSON strings, or returned by a PHP function the script calls
 - Each `Scriptling` instance is independent - no shared state between PHP objects
 - FrankenPHP is built from a patched copy so the `Scriptling` class survives config reloads (admin API `/load`, `--watch`); stock FrankenPHP only registers Go extensions on the first PHP startup ([php/frankenphp#2572](https://github.com/php/frankenphp/issues/2572)). Drop the patch in the `Dockerfile` once that is fixed upstream.

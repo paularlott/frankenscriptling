@@ -20,6 +20,7 @@ import (
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
 	"github.com/paularlott/scriptling/extlibs/similarity"
 	"github.com/paularlott/scriptling/libloader"
+	"github.com/paularlott/scriptling/object"
 	"github.com/paularlott/scriptling/plugin"
 	"github.com/paularlott/scriptling/stdlib"
 
@@ -165,43 +166,50 @@ func (s *ScriptlingVM) clearErr() {
 
 // --- Evaluation ---
 
-// export_php:method Scriptling::eval(string $code): string
-func (s *ScriptlingVM) Eval(code *C.zend_string) unsafe.Pointer {
-	if !s.ensureVM() {
-		return frankenphp.PHPString("", false)
-	}
-	result, err := s.vm.Eval(frankenphp.GoString(unsafe.Pointer(code)))
-	s.setError(err)
-	if err != nil {
-		return frankenphp.PHPString("", false)
-	}
-	return frankenphp.PHPString(result.Inspect(), false)
+// The eval methods and callFunction take an optional $functions array of
+// name => PHP callable, bound as script functions for that call only (see
+// php_functions.go).
+
+// export_php:method Scriptling::eval(string $code, array $functions = []): string
+func (s *ScriptlingVM) Eval(code *C.zend_string, functions *C.zend_array) unsafe.Pointer {
+	return s.run(functions, func() (object.Object, error) {
+		return s.vm.Eval(frankenphp.GoString(unsafe.Pointer(code)))
+	})
 }
 
-// export_php:method Scriptling::evalWithTimeout(int $timeoutMs, string $code): string
-func (s *ScriptlingVM) EvalWithTimeout(timeoutMs int64, code *C.zend_string) unsafe.Pointer {
-	if !s.ensureVM() {
-		return frankenphp.PHPString("", false)
-	}
-	result, err := s.vm.EvalWithTimeout(
-		time.Duration(timeoutMs)*time.Millisecond,
-		frankenphp.GoString(unsafe.Pointer(code)),
-	)
-	s.setError(err)
-	if err != nil {
-		return frankenphp.PHPString("", false)
-	}
-	return frankenphp.PHPString(result.Inspect(), false)
+// export_php:method Scriptling::evalWithTimeout(int $timeoutMs, string $code, array $functions = []): string
+func (s *ScriptlingVM) EvalWithTimeout(timeoutMs int64, code *C.zend_string, functions *C.zend_array) unsafe.Pointer {
+	return s.run(functions, func() (object.Object, error) {
+		return s.vm.EvalWithTimeout(
+			time.Duration(timeoutMs)*time.Millisecond,
+			frankenphp.GoString(unsafe.Pointer(code)),
+		)
+	})
 }
 
-// export_php:method Scriptling::evalFile(string $path): string
-func (s *ScriptlingVM) EvalFile(path *C.zend_string) unsafe.Pointer {
+// export_php:method Scriptling::evalFile(string $path, array $functions = []): string
+func (s *ScriptlingVM) EvalFile(path *C.zend_string, functions *C.zend_array) unsafe.Pointer {
+	return s.run(functions, func() (object.Object, error) {
+		return s.vm.EvalFile(frankenphp.GoString(unsafe.Pointer(path)))
+	})
+}
+
+// run binds functions, runs fn and returns its result as a PHP string ("" on
+// error, with the error kept for getLastError()).
+func (s *ScriptlingVM) run(functions *C.zend_array, fn func() (object.Object, error)) unsafe.Pointer {
 	if !s.ensureVM() {
 		return frankenphp.PHPString("", false)
 	}
-	result, err := s.vm.EvalFile(frankenphp.GoString(unsafe.Pointer(path)))
-	s.setError(err)
+	bound, err := s.bindPHPFunctions(functions)
 	if err != nil {
+		s.setErr(err.Error())
+		return frankenphp.PHPString("", false)
+	}
+	result, err := fn()
+	s.setError(err)
+	stopped := bound != nil && bound.stopped
+	bound.unbind()
+	if err != nil || stopped {
 		return frankenphp.PHPString("", false)
 	}
 	return frankenphp.PHPString(result.Inspect(), false)
@@ -517,8 +525,8 @@ func (s *ScriptlingVM) parseArgsJSON(argsJSON string) ([]interface{}, error) {
 	return args, nil
 }
 
-// export_php:method Scriptling::callFunction(string $name, string $argsJSON): string
-func (s *ScriptlingVM) CallFunction(name *C.zend_string, argsJSON *C.zend_string) unsafe.Pointer {
+// export_php:method Scriptling::callFunction(string $name, string $argsJSON, array $functions = []): string
+func (s *ScriptlingVM) CallFunction(name *C.zend_string, argsJSON *C.zend_string, functions *C.zend_array) unsafe.Pointer {
 	if !s.ensureVM() {
 		return frankenphp.PHPString("", false)
 	}
@@ -527,12 +535,9 @@ func (s *ScriptlingVM) CallFunction(name *C.zend_string, argsJSON *C.zend_string
 		s.setErr(err.Error())
 		return frankenphp.PHPString("", false)
 	}
-	result, callErr := s.vm.CallFunction(frankenphp.GoString(unsafe.Pointer(name)), args...)
-	s.setError(callErr)
-	if callErr != nil {
-		return frankenphp.PHPString("", false)
-	}
-	return frankenphp.PHPString(result.Inspect(), false)
+	return s.run(functions, func() (object.Object, error) {
+		return s.vm.CallFunction(frankenphp.GoString(unsafe.Pointer(name)), args...)
+	})
 }
 
 // --- Output Capture ---
