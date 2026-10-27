@@ -326,7 +326,8 @@ purpose. Override any variable via the environment, a local `.env` file
 | -------------------- | --------------- | ------------------------------------------------------------ |
 | `TAG_BASE`           | `paularlott`    | Registry/namespace for image tags                            |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
-| `FRANKENPHP_VERSION` | `1.13.2`        | FrankenPHP version                                           |
+| `FRANKENPHP_VERSION` | `1.13.4`        | FrankenPHP version                                           |
+| `GO_VERSION`         | `1.27.3`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
 | `SCRIPTLING_VERSION` | `v0.33.0`       | Scriptling version                                           |
 | `PHP_VERSIONS`       | `8.4.27 8.5.12` | Space-separated PHP versions (built in parallel)             |
 | `VERSION`            | from git        | Image version: the tag on HEAD (`v0.33.0` becomes `0.33.0`)  |
@@ -355,7 +356,7 @@ inside by `Scriptling::getBuildInfo()`.
 | `latest`             | yes    | the newest release on the newest PHP line                  |
 
 Builder images are tagged the way FrankenPHP tags its own
-(`dunglas/frankenphp:1.13.2-builder-php8.4`):
+(`dunglas/frankenphp:1.13.4-builder-php8.4`):
 
 | Tag                        | Moves? | Meaning                                              |
 | -------------------------- | ------ | ---------------------------------------------------- |

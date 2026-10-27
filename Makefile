@@ -7,7 +7,10 @@
 
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
-FRANKENPHP_VERSION ?= 1.13.3
+FRANKENPHP_VERSION ?= 1.13.4
+# Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
+# used exactly, never switched by a dependency)
+GO_VERSION ?= 1.27.3
 SCRIPTLING_VERSION ?= v0.33.0
 PHP_VERSIONS ?= 8.4.27 8.5.12
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
@@ -40,6 +43,7 @@ comma := ,
 export TAG_BASE
 export CACHE_TAG_BASE
 export FRANKENPHP_VERSION
+export GO_VERSION
 export SCRIPTLING_VERSION
 export PHP_LATEST
 export VERSION
@@ -86,6 +90,7 @@ version:
 	@echo "revision:           $(REVISION)"
 	@echo "scriptling:         $(SCRIPTLING_VERSION)"
 	@echo "frankenphp:         $(FRANKENPHP_VERSION)"
+	@echo "go:                 $(GO_VERSION)"
 	@echo "php:                $(PHP_VERSIONS) (latest: $(PHP_LATEST))"
 
 .PHONY: print
@@ -109,6 +114,7 @@ build-test-plugin:
 	docker buildx build \
 		--target test-plugin-export \
 		--build-arg FRANKENPHP_VERSION=$(FRANKENPHP_VERSION) \
+		--build-arg GO_VERSION=$(GO_VERSION) \
 		--build-arg PHP_VERSION=$(PHP_VERSION) \
 		--build-arg SCRIPTLING_VERSION=$(SCRIPTLING_VERSION) \
 		--build-arg IMAGE_VERSION=$(VERSION) \

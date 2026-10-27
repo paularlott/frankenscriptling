@@ -20,6 +20,13 @@ variable "FRANKENPHP_VERSION" {
   }
 }
 
+variable "GO_VERSION" {
+  validation {
+    condition     = GO_VERSION != ""
+    error_message = "GO_VERSION is not set: build through the Makefile, which exports it."
+  }
+}
+
 variable "SCRIPTLING_VERSION" {
   validation {
     condition     = SCRIPTLING_VERSION != ""
@@ -139,6 +146,7 @@ target "frankenscriptling" {
     FRANKENPHP_VERSION = "${FRANKENPHP_VERSION}"
     PHP_VERSION        = "${php}"
     SCRIPTLING_VERSION = "${SCRIPTLING_VERSION}"
+    GO_VERSION         = "${GO_VERSION}"
     IMAGE_VERSION      = "${VERSION}"
     IMAGE_REVISION     = "${REVISION}"
   }
@@ -196,6 +204,7 @@ target "frankenscriptling-builder" {
     FRANKENPHP_VERSION = "${FRANKENPHP_VERSION}"
     PHP_VERSION        = "${php}"
     SCRIPTLING_VERSION = "${SCRIPTLING_VERSION}"
+    GO_VERSION         = "${GO_VERSION}"
     IMAGE_VERSION      = "${VERSION}"
     IMAGE_REVISION     = "${REVISION}"
   }
