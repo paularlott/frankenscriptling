@@ -38,15 +38,19 @@ RUN go mod init ${GO_MODULE} \
     && go get github.com/paularlott/scriptling@${SCRIPTLING_VERSION} \
     && go mod tidy
 
-# FrankenPHP bug (https://github.com/php/frankenphp/issues/2572): Go extensions
-# are only registered on the first PHP startup. register_internal_extensions()
-# frees its module list afterwards, so a config reload (admin API /load,
-# caddy-scaleout, --watch) restarts PHP without the Scriptling class. Build
-# against a copy that keeps the list so every startup registers it again. When
-# upstream changes this code the patch no longer applies and the build says so.
+# FrankenPHP bug (https://github.com/php/frankenphp/issues/2572), fixed
+# upstream in v1.13.5: Go extensions were only registered on the first PHP
+# startup, because register_internal_extensions() freed its module list
+# afterwards, so a config reload (admin API /load, caddy-scaleout, --watch)
+# restarted PHP without the Scriptling class. Patch older versions to keep
+# the list alive instead; skip once the buggy pefree(modules) call is gone.
 RUN cp -r "$(go env GOMODCACHE)/github.com/dunglas/frankenphp@v${FRANKENPHP_VERSION}" /frankenphp-src \
     && chmod -R u+w /frankenphp-src \
-    && perl -0pi -e 's/\n  pefree\(modules, 1\);\n  modules = NULL;\n  modules_len = 0;\n\n  return SUCCESS;/\n  return SUCCESS;/ or die "frankenphp.c: extension registration patch did not apply\n"' /frankenphp-src/frankenphp.c
+    && if grep -q 'pefree(modules, 1)' /frankenphp-src/frankenphp.c; then \
+        perl -0pi -e 's/\n  pefree\(modules, 1\);\n  modules = NULL;\n  modules_len = 0;\n\n  return SUCCESS;/\n  return SUCCESS;/ or die "frankenphp.c: extension registration patch did not apply\n"' /frankenphp-src/frankenphp.c; \
+    else \
+        echo "frankenphp.c: no pefree(modules) call found, assuming upstream issue #2572 fix is already in place"; \
+    fi
 
 ADD https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz /tmp/php.tar.gz
 RUN tar xzf /tmp/php.tar.gz -C /tmp
