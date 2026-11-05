@@ -7,11 +7,11 @@
 
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
-FRANKENPHP_VERSION ?= 1.13.4
+FRANKENPHP_VERSION ?= 1.13.5
 # Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
 # used exactly, never switched by a dependency)
 GO_VERSION ?= 1.27.3
-SCRIPTLING_VERSION ?= v0.33.0
+SCRIPTLING_VERSION ?= v0.33.1
 PHP_VERSIONS ?= 8.4.27 8.5.12
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 # The newest PHP line gets the floating `latest` tag.
