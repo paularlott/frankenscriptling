@@ -105,6 +105,8 @@ $excluded = [
     "scriptling.net.unicast",
     "scriptling.provision.file",
     "scriptling.provision.fetch",
+    "scriptling.provision.command",
+    "scriptling.provision.package",
     "scriptling.runtime.sandbox",
     "scriptling.runtime.plugin",
     "scriptling.nomad",

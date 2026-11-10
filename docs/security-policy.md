@@ -14,11 +14,11 @@ an operator controls (process environment variables and/or files on disk).
 | --- | --- | --- |
 | Always on | No fs/net capability, no restriction needed | stdlib (`json`, `re`, `time`, `datetime`, `math`, `base64`, `hashlib`, `hmac`, `random`, `urllib`, `urllib.parse`, `string`, `uuid`, `html`, `statistics`, `functools`, `textwrap`, `platform`, `itertools`, `collections`, `contextlib`, `difflib`, `io`, `msgpack`), plus `toml`, `yaml`, `html.parser`, `logging`, `sys`, `secrets`, `shlex`, `scriptling.csv`, `scriptling.xml`, `scriptling.markdown`, `scriptling.similarity`, `scriptling.template.html`, `scriptling.template.text`, `scriptling.ai.agent`, `scriptling.ai.agent.interact`, `scriptling.ai.memory` |
 | Filesystem-gated | Registered only when enabled *and* `allowed_paths` grants access | `pathlib`, `os`/`os.path`, `fs`, `glob`, `shutil`, `tempfile`, `tarfile`, `zipfile`, `scriptling.find`, `scriptling.grep`, `scriptling.sed` |
-| Network-gated | Registered only when enabled *and* a network policy is configured | `requests`, `scriptling.net.websocket`, `scriptling.net.resolve`, `scriptling.ai`, `scriptling.mcp` |
+| Network-gated | Registered only when enabled *and* a network policy is configured | `requests`, `scriptling.net.websocket`, `scriptling.net.resolve`, `scriptling.ai`, `scriptling.mcp`, `scriptling.mercure` |
 | Disable-only | On/off, no restriction possible (upstream doesn't support it) | `subprocess` |
 | Secret-provider-gated | Registered only when enabled *and* at least one secret provider is configured | `scriptling.secret` |
 | Plugin-gated | Registered only when enabled *and* a plugin directory and/or HTTP-loading is configured; scripts can always use whichever plugins the operator pre-loaded, and can only `load`/`unload` a plugin themselves when HTTP-loading is explicitly opted into, and then only over HTTP(S) within the network policy (see [Plugins](#plugins-scriptlingplugin) below) | `scriptling.plugin` |
-| Not shipped | Excluded from this image entirely — no config can turn them on | `scriptling.wait_for`, `scriptling.messaging.*`, `scriptling.container` (Docker/Podman/Apple socket access), `scriptling.valkey`, `scriptling.badgerdb`, `scriptling.sql`, `scriptling.sqlite`, `scriptling.net.gossip`, `scriptling.net.multicast`, `scriptling.net.unicast`, `scriptling.provision.file`, `scriptling.provision.fetch`, `scriptling.runtime.*`, `scriptling.nomad` |
+| Not shipped | Excluded from this image entirely — no config can turn them on | `scriptling.wait_for`, `scriptling.messaging.*`, `scriptling.container` (Docker/Podman/Apple socket access), `scriptling.valkey`, `scriptling.badgerdb`, `scriptling.sql`, `scriptling.sqlite`, `scriptling.net.gossip`, `scriptling.net.multicast`, `scriptling.net.unicast`, `scriptling.provision.*`, `scriptling.runtime.*`, `scriptling.nomad` |
 
 Notes:
 - `scriptling.ai.agent`, `scriptling.ai.agent.interact`, and `scriptling.ai.memory`
@@ -31,6 +31,14 @@ Notes:
   stdio MCP server (`mcp.Client("/path/to/server")`) is a subprocess the
   script names and starts, so it is refused unless `subprocess` is enabled
   too; `make test-security-mcp` checks this.
+- `scriptling.mercure` publishes to and subscribes at Mercure hubs, the one
+  built into this image included. Every connection to a hub passes the
+  network policy, so a hub on loopback or a private address needs a policy
+  that allows it (`allow_loopback`, `allow_private`, `allow_ip_literals`). A
+  CA bundle a script names with `verify="path"` must lie within
+  `allowed_paths`. Clients and subscriptions a script leaves open are closed
+  when PHP calls `reset()` and when the `Scriptling` object is freed;
+  `make test-security-mercure` checks this against the built-in hub.
 - The excluded libraries are either a materially bigger blast radius than
   fs/net access (container runtime sockets) or need infrastructure this
   image doesn't wire up (the compiled-in storage-backend plugins —

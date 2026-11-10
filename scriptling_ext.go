@@ -16,7 +16,9 @@ import (
 	"github.com/paularlott/scriptling/extlibs/agent"
 	extai "github.com/paularlott/scriptling/extlibs/ai"
 	"github.com/paularlott/scriptling/extlibs/ai/memory"
+	"github.com/paularlott/scriptling/extlibs/fssecurity"
 	extmcp "github.com/paularlott/scriptling/extlibs/mcp"
+	extmercure "github.com/paularlott/scriptling/extlibs/mercure"
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
 	"github.com/paularlott/scriptling/extlibs/similarity"
 	"github.com/paularlott/scriptling/libloader"
@@ -144,6 +146,12 @@ func registerLibraries(vm *scriptling.Scriptling, policy *LibraryPolicy) {
 			extmcp.RegisterConfigured(vm, policy.Network, policy.isEnabled(extlibs.SubprocessLibraryName))
 			extmcp.RegisterToon(vm)
 			extmcp.RegisterToolHelpers(vm)
+		})
+		reg(extlibs.MercureLibraryName, func() {
+			// Hub connections follow the network policy; a CA bundle named
+			// with verify="path" must lie within the allowed paths (none
+			// unless the operator set some).
+			extmercure.RegisterConfigured(vm, fssecurity.Config{AllowedPaths: policy.AllowedPaths}, policy.Network)
 		})
 	}
 }
@@ -456,6 +464,9 @@ func (s *ScriptlingVM) Reset() {
 	if !s.ensureVM() {
 		return
 	}
+	// Also closes what the last script left open (Mercure clients and the
+	// like); what a freed Scriptling object's scripts left open closes once
+	// it is collected.
 	s.vm.ResetEnv()
 	s.clearErr()
 }

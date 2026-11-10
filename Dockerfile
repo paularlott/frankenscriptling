@@ -3,7 +3,7 @@
 ARG FRANKENPHP_VERSION=1.13.4
 ARG PHP_VERSION=8.5.12
 ARG GO_MODULE=example.com/frankenscriptling
-ARG SCRIPTLING_VERSION=v0.33.0
+ARG SCRIPTLING_VERSION=v0.38.0
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
 
@@ -12,7 +12,7 @@ FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION} AS build
 ARG FRANKENPHP_VERSION=1.13.4
 ARG PHP_VERSION=8.5.12
 ARG GO_MODULE=example.com/frankenscriptling
-ARG SCRIPTLING_VERSION=v0.33.0
+ARG SCRIPTLING_VERSION=v0.38.0
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
 
@@ -87,7 +87,7 @@ RUN build-frankenscriptling
 # `target` field) produces, and that must always be `runtime` below, never
 # this test-only one.
 FROM builder AS test-plugin
-ARG SCRIPTLING_VERSION=v0.33.0
+ARG SCRIPTLING_VERSION=v0.38.0
 COPY tests/fixtures/plugin-src/ /test-plugin-src/
 RUN cd /test-plugin-src \
     && go mod init frankenscriptling-test-plugin \

@@ -11,7 +11,7 @@ FRANKENPHP_VERSION ?= 1.13.5
 # Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
 # used exactly, never switched by a dependency)
 GO_VERSION ?= 1.27.3
-SCRIPTLING_VERSION ?= v0.35.0
+SCRIPTLING_VERSION ?= v0.38.0
 PHP_VERSIONS ?= 8.4.27 8.5.12
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 # The newest PHP line gets the floating `latest` tag.
@@ -200,7 +200,7 @@ test-security-adversarial:
 	docker run --rm \
 		-v $(CURDIR)/tests:/app/tests:ro \
 		-e SCRIPTLING_ALLOWED_PATHS=/app/tests \
-		-e SCRIPTLING_ENABLED_LIBRARIES=os,pathlib,requests,subprocess,scriptling.secret,scriptling.wait_for,scriptling.container,scriptling.plugin,scriptling.valkey,scriptling.badgerdb,scriptling.sql,scriptling.sqlite,scriptling.net.gossip,scriptling.net.multicast,scriptling.net.unicast,scriptling.provision.file,scriptling.provision.fetch,scriptling.runtime.sandbox,scriptling.runtime.plugin,scriptling.nomad,scriptling.messaging.console \
+		-e SCRIPTLING_ENABLED_LIBRARIES=os,pathlib,requests,subprocess,scriptling.secret,scriptling.wait_for,scriptling.container,scriptling.plugin,scriptling.valkey,scriptling.badgerdb,scriptling.sql,scriptling.sqlite,scriptling.net.gossip,scriptling.net.multicast,scriptling.net.unicast,scriptling.provision.file,scriptling.provision.fetch,scriptling.provision.command,scriptling.provision.package,scriptling.runtime.sandbox,scriptling.runtime.plugin,scriptling.nomad,scriptling.messaging.console \
 		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/permissive-ip-literals-policy.toml,/app/tests/fixtures/deny-hosts-network-policy.toml \
 		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
 		frankenphp php-cli /app/tests/test_security_adversarial.php
@@ -322,9 +322,37 @@ test-security-mcp:
 		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
 		frankenphp php-cli /app/tests/test_security_mcp.php
 
+.PHONY: test-security-mercure
+## Run the scriptling.mercure tests: publish/subscribe through the image's own Mercure hub, reset() closing what a script left open, and the library staying closed without being enabled or without a network policy
+test-security-mercure:
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/allow-loopback-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		sh -c 'cd /tmp && frankenphp run --config /app/tests/fixtures/mercure.Caddyfile --adapter caddyfile >/tmp/hub.log 2>&1 & \
+			frankenphp php-cli /app/tests/test_security_mercure.php enabled'
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/open-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_mercure.php denied
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=requests \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/allow-loopback-network-policy.toml \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_mercure.php disabled
+	docker run --rm \
+		-v $(CURDIR)/tests:/app/tests:ro \
+		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure \
+		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
+		frankenphp php-cli /app/tests/test_security_mercure.php nonetwork
+
 .PHONY: test-all-security
 ## Run every security-policy test suite
-test-all-security: test-limits test-security test-security-edge test-security-mcp test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined test-security-plugins-explicit-http test-security-plugins-dual test-security-plugins-http-allowed
+test-all-security: test-limits test-security test-security-edge test-security-mcp test-security-mercure test-security-adversarial test-security-failclosed test-security-plugins test-security-plugins-http test-security-plugins-explicit test-security-plugins-combined test-security-plugins-explicit-http test-security-plugins-dual test-security-plugins-http-allowed
 
 .PHONY: help
 ## This help screen

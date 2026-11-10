@@ -76,7 +76,7 @@ $data   = $vm->getVarJSON("data");       // '{"x":1,"y":[2,3]}'
 $exists = $vm->hasVar("name");           // true
 $vars   = $vm->listVars();               // JSON array of variable names
 $vm->unsetVar("name");
-$vm->reset();                            // Clear all user variables
+$vm->reset();                            // Clear all user variables, closing what scripts left open
 ```
 
 Variables are available in scriptling code:
@@ -403,7 +403,7 @@ purpose. Override any variable via the environment, a local `.env` file
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
 | `FRANKENPHP_VERSION` | `1.13.4`        | FrankenPHP version                                           |
 | `GO_VERSION`         | `1.27.3`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
-| `SCRIPTLING_VERSION` | `v0.33.0`       | Scriptling version                                           |
+| `SCRIPTLING_VERSION` | `v0.38.0`       | Scriptling version                                           |
 | `PHP_VERSIONS`       | `8.4.27 8.5.12` | Space-separated PHP versions (built in parallel)             |
 | `VERSION`            | from git        | Image version: the tag on HEAD (`v0.34.0` becomes `0.34.0`)  |
 
@@ -595,6 +595,7 @@ All Scriptling VM instances come pre-loaded with the following libraries. Use `i
 | AI Agent Interact | `scriptling.ai.agent.interact` | Interactive agent sessions                                   |
 | AI Memory         | `scriptling.ai.memory`         | Persistent memory for AI agents                              |
 | MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction (network-gated)      |
+| Mercure           | `scriptling.mercure`           | Publish to and subscribe at Mercure hubs (network-gated)     |
 | TOON              | `scriptling.toon`              | TOON (Token-Oriented Object Notation) encoding               |
 | Similarity        | `scriptling.similarity`        | Fuzzy matching and MinHash similarity search                 |
 | HTML Templates    | `scriptling.template.html`     | HTML template rendering                                      |
@@ -640,10 +641,27 @@ The binary also carries FrankenPHP's standard Caddy modules, including the
 `mercure_publish()`), built with the same `deprecated_topic`/`deprecated_claim`
 tags as the official image.
 
+Scripts can publish to and subscribe at it, or any other hub, with
+`scriptling.mercure` once it is enabled with a network policy that reaches the
+hub (see [Security Policy](#security-policy)):
+
+```php
+// SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure, and a network policy
+$vm = new Scriptling();
+$vm->setVar('key', getenv('MERCURE_PUBLISHER_JWT_KEY'));
+$vm->eval(<<<'PY'
+import scriptling.mercure as mercure
+
+with mercure.Client("https://example.com/.well-known/mercure", key=key) as hub:
+    hub.publish("https://example.com/books/1", {"title": "Dune"})
+PY);
+```
+
 ## Notes
 
 - The Scriptling language uses Python-like syntax (e.g., `True`/`False`, `def`, `lambda`, `import`)
 - The `.` operator in scriptling is attribute access (like Python), not string concatenation
 - Complex data (lists, dicts) is passed via JSON strings, or returned by a PHP function the script calls
 - Each `Scriptling` instance is independent - no shared state between PHP objects
+- What a script leaves open (Mercure clients and subscriptions, WebSocket connections, stdio MCP servers, zip and tar archives) is closed by `reset()`, and once the `Scriptling` object is freed and collected
 - FrankenPHP is built from a patched copy so the `Scriptling` class survives config reloads (admin API `/load`, `--watch`); stock FrankenPHP only registers Go extensions on the first PHP startup ([php/frankenphp#2572](https://github.com/php/frankenphp/issues/2572)). Drop the patch in the `Dockerfile` once that is fixed upstream.

@@ -1,0 +1,28 @@
+# The Mercure hub built into this image, for `make test-security-mercure`:
+# loopback only, plain HTTP, Mercure 1.0, with the subscriptions API so the
+# test can see which subscriptions are open. The issuer is the one
+# scriptling.mercure puts in its tokens by default, and the resource
+# identifier the audience it gives them (the hub's URL).
+{
+	admin off
+	auto_https off
+	skip_install_trust
+}
+
+http://127.0.0.1:8090 {
+	route {
+		mercure {
+			issuer https://localhost {
+				publisher {
+					jwt "frankenscriptling-mercure-test-key-0123456789" HS256
+				}
+				subscriber {
+					jwt "frankenscriptling-mercure-test-key-0123456789" HS256
+				}
+			}
+			resource_identifier http://127.0.0.1:8090/.well-known/mercure
+			subscriptions
+		}
+		respond 404
+	}
+}
