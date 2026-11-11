@@ -1,0 +1,15 @@
+# Lets scriptling.mercure reach the Mercure hub built into this image, as
+# served on 127.0.0.2 by the Caddyfile beside this file, and nothing else on
+# loopback or the local network. Use it with:
+#
+#   SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure
+#   SCRIPTLING_NETWORK_POLICY_FILE=/path/to/network-policy.toml
+#
+# The policy cannot name a port, so the hub gets an address of its own rather
+# than allow_loopback, which would also open 127.0.0.1: Caddy's admin API
+# (port 2019) and anything else listening there. Hubs and hosts on the public
+# internet stay reachable, under the safe defaults; add allow_hosts to narrow
+# that too.
+
+https_only = false        # the hub's loopback address is plain HTTP
+allow_cidrs = ["127.0.0.2/32"]

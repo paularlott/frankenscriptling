@@ -323,12 +323,13 @@ test-security-mcp:
 		frankenphp php-cli /app/tests/test_security_mcp.php
 
 .PHONY: test-security-mercure
-## Run the scriptling.mercure tests: publish/subscribe through the image's own Mercure hub, reset() closing what a script left open, and the library staying closed without being enabled or without a network policy
+## Run the scriptling.mercure tests: publish/subscribe through the image's own Mercure hub under examples/mercure-local-hub (the hub reachable, the rest of loopback not), reset() closing what a script left open, and the library staying closed without being enabled or without a network policy
 test-security-mercure:
 	docker run --rm \
 		-v $(CURDIR)/tests:/app/tests:ro \
+		-v $(CURDIR)/examples:/app/examples:ro \
 		-e SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure \
-		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/tests/fixtures/allow-loopback-network-policy.toml \
+		-e SCRIPTLING_NETWORK_POLICY_FILE=/app/examples/mercure-local-hub/network-policy.toml \
 		$(TAG_BASE)/frankenscriptling:$(VERSION)-php$(PHP_VERSION) \
 		sh -c 'cd /tmp && frankenphp run --config /app/tests/fixtures/mercure.Caddyfile --adapter caddyfile >/tmp/hub.log 2>&1 & \
 			frankenphp php-cli /app/tests/test_security_mercure.php enabled'

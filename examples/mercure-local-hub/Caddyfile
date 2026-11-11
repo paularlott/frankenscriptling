@@ -1,0 +1,47 @@
+# Your app's site, with its Mercure hub also reachable by Scriptling scripts on
+# a loopback address of their own, 127.0.0.2, where the site serves the hub
+# and nothing else. Pair it with network-policy.toml, which lets scripts reach
+# that one address and nothing else on loopback: not 127.0.0.1 or localhost,
+# where Caddy's admin API and anything else on the machine listen.
+#
+# Both addresses are one site block, so one hub: what a script publishes on
+# 127.0.0.2 reaches browsers subscribed on example.com.
+#
+# Scripts connect with:
+#
+#   mercure.Client("http://127.0.0.2:8090/.well-known/mercure", key=key,
+#                  audience="https://example.com/.well-known/mercure")
+#
+# audience= names the hub's public URL, its resource identifier, which is what
+# the hub checks tokens against whichever address they arrive on.
+{
+	frankenphp
+}
+
+example.com, http://127.0.0.2:8090 {
+	root * /app/public
+	encode zstd br gzip
+
+	mercure {
+		# scriptling.mercure's tokens name https://localhost as their
+		# issuer unless the script gives issuer=.
+		issuer https://localhost {
+			publisher {
+				jwt {env.MERCURE_PUBLISHER_JWT_KEY} HS256
+			}
+			subscriber {
+				jwt {env.MERCURE_SUBSCRIBER_JWT_KEY} HS256
+			}
+		}
+		resource_identifier https://example.com/.well-known/mercure
+	}
+
+	# On the scripts' address, the hub only: not the app.
+	@scripts {
+		host 127.0.0.2
+		not path /.well-known/mercure /.well-known/mercure/*
+	}
+	respond @scripts 404
+
+	php_server
+}

@@ -34,11 +34,17 @@ Notes:
 - `scriptling.mercure` publishes to and subscribes at Mercure hubs, the one
   built into this image included. Every connection to a hub passes the
   network policy, so a hub on loopback or a private address needs a policy
-  that allows it (`allow_loopback`, `allow_private`, `allow_ip_literals`). A
-  CA bundle a script names with `verify="path"` must lie within
-  `allowed_paths`. Clients and subscriptions a script leaves open are closed
-  when PHP calls `reset()` and when the `Scriptling` object is freed;
-  `make test-security-mercure` checks this against the built-in hub.
+  that allows it. For the built-in hub use
+  [`examples/mercure-local-hub`](../examples/mercure-local-hub): the hub on a
+  loopback address of its own and a policy (`allow_cidrs`) for that address
+  alone. A policy can't name a port, so `allow_loopback` (or
+  `allow_private_ips`, `allow_ip_literals`) opens everything listening
+  there, Caddy's admin API on `localhost:2019` included. A CA bundle a
+  script names with `verify="path"` must lie within `allowed_paths`.
+  Clients and subscriptions a script leaves open are closed when PHP calls
+  `reset()` and when the `Scriptling` object is freed. `make
+  test-security-mercure` checks all of this against the built-in hub, with
+  the example's policy file.
 - The excluded libraries are either a materially bigger blast radius than
   fs/net access (container runtime sockets) or need infrastructure this
   image doesn't wire up (the compiled-in storage-backend plugins —

@@ -643,19 +643,33 @@ tags as the official image.
 
 Scripts can publish to and subscribe at it, or any other hub, with
 `scriptling.mercure` once it is enabled with a network policy that reaches the
-hub (see [Security Policy](#security-policy)):
+hub (see [Security Policy](#security-policy)).
+
+To reach the built-in hub, start from
+[`examples/mercure-local-hub`](examples/mercure-local-hub): a Caddyfile that
+also serves your site's hub, and only the hub, on a loopback address of its
+own (`127.0.0.2`), and a network policy that lets scripts reach that one
+address. Don't allow loopback as a whole for this: the policy can't name a
+port, and `allow_loopback` would also open Caddy's admin API on
+`localhost:2019`.
 
 ```php
-// SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure, and a network policy
+// SCRIPTLING_ENABLED_LIBRARIES=scriptling.mercure
+// SCRIPTLING_NETWORK_POLICY_FILE=examples/mercure-local-hub/network-policy.toml
 $vm = new Scriptling();
 $vm->setVar('key', getenv('MERCURE_PUBLISHER_JWT_KEY'));
 $vm->eval(<<<'PY'
 import scriptling.mercure as mercure
 
-with mercure.Client("https://example.com/.well-known/mercure", key=key) as hub:
+with mercure.Client("http://127.0.0.2:8090/.well-known/mercure", key=key,
+                    audience="https://example.com/.well-known/mercure") as hub:
     hub.publish("https://example.com/books/1", {"title": "Dune"})
 PY);
 ```
+
+`audience` is the hub's public URL, the resource identifier it checks tokens
+against; what the script publishes reaches browsers subscribed on
+`example.com`, since both addresses are one site and one hub.
 
 ## Notes
 
