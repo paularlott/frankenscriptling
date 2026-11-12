@@ -402,9 +402,9 @@ purpose. Override any variable via the environment, a local `.env` file
 | `TAG_BASE`           | `paularlott`    | Registry/namespace for image tags                            |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
 | `FRANKENPHP_VERSION` | `1.13.4`        | FrankenPHP version                                           |
-| `GO_VERSION`         | `1.27.3`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
+| `GO_VERSION`         | `1.27.4`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
 | `SCRIPTLING_VERSION` | `v0.38.0`       | Scriptling version                                           |
-| `PHP_VERSIONS`       | `8.4.27 8.5.12` | Space-separated PHP versions (built in parallel)             |
+| `PHP_VERSIONS`       | `8.5.12 8.4.27` | Space-separated PHP versions (built in parallel; the first is the default) |
 | `VERSION`            | from git        | Image version: the tag on HEAD (`v0.34.0` becomes `0.34.0`)  |
 
 `make version` prints what a build would use. `make all` and
