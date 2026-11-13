@@ -11,9 +11,7 @@ FRANKENPHP_VERSION ?= 1.13.5
 # Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
 # used exactly, never switched by a dependency)
 GO_VERSION ?= 1.27.4
-SCRIPTLING_VERSION ?= v0.38.0
-# The first version is the default: `make dev` builds it and the test targets
-# run against it.
+SCRIPTLING_VERSION ?= v0.40.1
 PHP_VERSIONS ?= 8.5.12 8.4.27
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 # The newest PHP line gets the floating `latest` tag.

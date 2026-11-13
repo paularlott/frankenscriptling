@@ -16,17 +16,27 @@ import (
 	"github.com/paularlott/scriptling/extlibs/agent"
 	extai "github.com/paularlott/scriptling/extlibs/ai"
 	"github.com/paularlott/scriptling/extlibs/ai/memory"
+	"github.com/paularlott/scriptling/extlibs/filesystem"
 	"github.com/paularlott/scriptling/extlibs/fssecurity"
+	"github.com/paularlott/scriptling/extlibs/logging"
+	"github.com/paularlott/scriptling/extlibs/markdown"
 	extmcp "github.com/paularlott/scriptling/extlibs/mcp"
 	extmercure "github.com/paularlott/scriptling/extlibs/mercure"
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
+	"github.com/paularlott/scriptling/extlibs/net/websocket"
+	"github.com/paularlott/scriptling/extlibs/platform"
+	"github.com/paularlott/scriptling/extlibs/requests"
+	"github.com/paularlott/scriptling/extlibs/secret"
 	"github.com/paularlott/scriptling/extlibs/similarity"
+	"github.com/paularlott/scriptling/extlibs/subprocess"
+	"github.com/paularlott/scriptling/extlibs/sys"
+	"github.com/paularlott/scriptling/extlibs/template"
+	"github.com/paularlott/scriptling/extlibs/toml"
+	"github.com/paularlott/scriptling/extlibs/yaml"
 	"github.com/paularlott/scriptling/libloader"
 	"github.com/paularlott/scriptling/object"
 	"github.com/paularlott/scriptling/plugin"
 	"github.com/paularlott/scriptling/stdlib"
-
-	extlibs "github.com/paularlott/scriptling/extlibs"
 )
 
 // export_php:class Scriptling
@@ -75,19 +85,17 @@ func registerLibraries(vm *scriptling.Scriptling, policy *LibraryPolicy) {
 	}
 
 	// Always-on: pure computation, no filesystem or network access.
+	// stdlib.RegisterAll includes html.parser, shlex, secrets, csv and xml;
+	// platform is registered separately (it is no longer part of RegisterAll).
 	stdlib.RegisterAll(vm)
-	extlibs.RegisterTOMLLibrary(vm)
-	extlibs.RegisterYAMLLibrary(vm)
-	extlibs.RegisterHTMLParserLibrary(vm)
-	extlibs.RegisterLoggingLibraryDefault(vm)
-	extlibs.RegisterSysLibrary(vm, nil, nil)
-	extlibs.RegisterSecretsLibrary(vm)
-	extlibs.RegisterShlexLibrary(vm)
-	extlibs.RegisterCsvLibrary(vm)
-	extlibs.RegisterXmlLibrary(vm)
-	extlibs.RegisterMarkdownLibrary(vm)
-	extlibs.RegisterTemplateHTMLLibrary(vm)
-	extlibs.RegisterTemplateTextLibrary(vm)
+	platform.Register(vm)
+	toml.Register(vm)
+	yaml.Register(vm)
+	logging.RegisterDefault(vm)
+	sys.Register(vm, nil, nil)
+	markdown.Register(vm)
+	template.RegisterHTML(vm)
+	template.RegisterText(vm)
 	similarity.Register(vm)
 	memory.Register(vm)
 	agent.Register(vm)
@@ -95,27 +103,27 @@ func registerLibraries(vm *scriptling.Scriptling, policy *LibraryPolicy) {
 
 	// Filesystem-gated: closed unless policy.AllowedPaths is non-empty AND
 	// the library is individually enabled.
-	reg(extlibs.PathlibLibraryName, func() { extlibs.RegisterPathlibLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.OSLibraryName, func() { extlibs.RegisterOSLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.FSLibraryName, func() { extlibs.RegisterFSLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.GlobLibraryName, func() { extlibs.RegisterGlobLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.ShutilLibraryName, func() { extlibs.RegisterShutilLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.TempfileLibraryName, func() { extlibs.RegisterTempfileLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.TarfileLibraryName, func() { extlibs.RegisterTarfileLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.ZipfileLibraryName, func() { extlibs.RegisterZipfileLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.FindLibraryName, func() { extlibs.RegisterFindLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.GrepLibraryName, func() { extlibs.RegisterGrepLibrary(vm, policy.AllowedPaths) })
-	reg(extlibs.SedLibraryName, func() { extlibs.RegisterSedLibrary(vm, policy.AllowedPaths) })
+	reg(filesystem.PathlibLibraryName, func() { filesystem.RegisterPathlib(vm, policy.AllowedPaths) })
+	reg(filesystem.OSLibraryName, func() { filesystem.RegisterOS(vm, policy.AllowedPaths) })
+	reg(filesystem.FSLibraryName, func() { filesystem.RegisterFS(vm, policy.AllowedPaths) })
+	reg(filesystem.GlobLibraryName, func() { filesystem.RegisterGlob(vm, policy.AllowedPaths) })
+	reg(filesystem.ShutilLibraryName, func() { filesystem.RegisterShutil(vm, policy.AllowedPaths) })
+	reg(filesystem.TempfileLibraryName, func() { filesystem.RegisterTempfile(vm, policy.AllowedPaths) })
+	reg(filesystem.TarfileLibraryName, func() { filesystem.RegisterTarfile(vm, policy.AllowedPaths) })
+	reg(filesystem.ZipfileLibraryName, func() { filesystem.RegisterZipfile(vm, policy.AllowedPaths) })
+	reg(filesystem.FindLibraryName, func() { filesystem.RegisterFind(vm, policy.AllowedPaths) })
+	reg(filesystem.GrepLibraryName, func() { filesystem.RegisterGrep(vm, policy.AllowedPaths) })
+	reg(filesystem.SedLibraryName, func() { filesystem.RegisterSed(vm, policy.AllowedPaths) })
 
 	// Disable-only: no upstream restriction knob, so it's all-or-nothing and
 	// off unless explicitly enabled.
-	reg(extlibs.SubprocessLibraryName, func() { extlibs.RegisterSubprocessLibrary(vm) })
+	reg(subprocess.LibraryName, func() { subprocess.Register(vm) })
 
 	// Secret-provider-gated: closed unless a provider is configured (see
 	// SCRIPTLING_SECRET_* / SCRIPTLING_SECRET_PROVIDERS_FILE in security.go)
 	// AND the library is individually enabled.
 	if policy.Secrets != nil {
-		reg(extlibs.SecretLibraryName, func() { extlibs.RegisterSecretLibrary(vm, policy.Secrets) })
+		reg(secret.LibraryName, func() { secret.Register(vm, policy.Secrets) })
 	}
 
 	// Plugin-gated: closed unless SCRIPTLING_PLUGIN_DIR and/or
@@ -134,20 +142,20 @@ func registerLibraries(vm *scriptling.Scriptling, policy *LibraryPolicy) {
 	// Network-gated: closed unless policy.Network is non-nil AND the library
 	// is individually enabled.
 	if policy.Network != nil {
-		reg(extlibs.RequestsLibraryName, func() { extlibs.RegisterRequestsLibrary(vm, policy.Network) })
-		reg(extlibs.WebSocketLibraryName, func() { extlibs.RegisterWebSocketLibrary(vm, policy.Network) })
-		reg(extlibs.ResolveLibraryName, func() { scriptlingresolve.Register(vm, netResolverFor(policy.Network)) })
-		reg(extlibs.AILibraryName, func() { extai.Register(vm, policy.Network) })
-		reg(extlibs.MCPLibraryName, func() {
+		reg(requests.LibraryName, func() { requests.Register(vm, policy.Network) })
+		reg(websocket.LibraryName, func() { websocket.Register(vm, policy.Network) })
+		reg(scriptlingresolve.LibraryName, func() { scriptlingresolve.Register(vm, netResolverFor(policy.Network)) })
+		reg(extai.AILibraryName, func() { extai.Register(vm, policy.Network) })
+		reg(extmcp.MCPLibraryName, func() {
 			// A stdio MCP server is a subprocess the script names and starts,
 			// so it is allowed only when the subprocess library itself is
 			// enabled; otherwise only HTTP(S) MCP servers, under the network
 			// policy, can be reached.
-			extmcp.RegisterConfigured(vm, policy.Network, policy.isEnabled(extlibs.SubprocessLibraryName))
+			extmcp.RegisterConfigured(vm, policy.Network, policy.isEnabled(subprocess.LibraryName))
 			extmcp.RegisterToon(vm)
 			extmcp.RegisterToolHelpers(vm)
 		})
-		reg(extlibs.MercureLibraryName, func() {
+		reg(extmercure.LibraryName, func() {
 			// Hub connections follow the network policy; a CA bundle named
 			// with verify="path" must lie within the allowed paths (none
 			// unless the operator set some).

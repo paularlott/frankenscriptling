@@ -105,7 +105,7 @@ operator's limit. Running time is bounded separately with `evalWithTimeout`.
 
 ### Network policy file schema
 
-Identical to [Scriptling's own `netsecurity` policy format](https://github.com/paularlott/scriptling/blob/main/extlibs/netsecurity/netsecurity.go):
+Identical to [Scriptling's own `netsecurity` policy format](https://github.com/paularlott/scriptling/blob/main/extlibs/netsecurity/policyfile/policyfile.go):
 
 ```toml
 https_only = true

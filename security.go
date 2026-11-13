@@ -23,7 +23,10 @@ import (
 	"github.com/BurntSushi/toml"
 	scriptlingresolve "github.com/paularlott/scriptling/extlibs/net/resolve"
 	"github.com/paularlott/scriptling/extlibs/netsecurity"
+	"github.com/paularlott/scriptling/extlibs/netsecurity/policyfile"
 	"github.com/paularlott/scriptling/extlibs/secretprovider"
+	"github.com/paularlott/scriptling/extlibs/secretprovider/onepassword"
+	"github.com/paularlott/scriptling/extlibs/secretprovider/vault"
 	"github.com/paularlott/scriptling/plugin"
 )
 
@@ -254,6 +257,16 @@ func loadSecretRegistryFromEnv() (*secretprovider.Registry, error) {
 		return nil, nil
 	}
 
+	// The provider types live in their own packages and must be registered
+	// before RegisterConfigs can build them: vault and onepassword, the two
+	// types this extension supports. Both calls are idempotent.
+	if err := vault.Register(); err != nil {
+		return nil, fmt.Errorf("scriptling.secret: %w", err)
+	}
+	if err := onepassword.Register(); err != nil {
+		return nil, fmt.Errorf("scriptling.secret: %w", err)
+	}
+
 	registry := secretprovider.NewRegistry()
 	if err := secretprovider.RegisterConfigs(registry, configs); err != nil {
 		return nil, fmt.Errorf("scriptling.secret: %w", err)
@@ -408,9 +421,9 @@ type combinedPolicyFile struct {
 
 // networkPolicyFile mirrors extlibs/netsecurity's own (unexported) TOML
 // schema deliberately, so a [network] table here and a standalone
-// netsecurity policy file (loaded via netsecurity.LoadConfig, see
+// netsecurity policy file (loaded via policyfile.LoadConfig, see
 // loadNetworkPolicyFiles below) use identical keys. Keep in sync with
-// extlibs/netsecurity.policyFile if that schema ever changes upstream.
+// extlibs/netsecurity/policyfile.policyFile if that schema ever changes upstream.
 type networkPolicyFile struct {
 	HTTPSOnly       bool     `toml:"https_only"`
 	AllowIPLiterals bool     `toml:"allow_ip_literals"`
@@ -450,14 +463,14 @@ func (f networkPolicyFile) toConfig() (*netsecurity.Config, error) {
 }
 
 // loadNetworkPolicyFiles loads one or more netsecurity policy files (each in
-// netsecurity's own flat TOML schema, via netsecurity.LoadConfig — no
+// netsecurity's own flat TOML schema, via policyfile.LoadConfig — no
 // reimplemented parsing) and merges them in order: later files' non-empty
 // list fields and any set duration override earlier ones; boolean flags are
 // fully replaced by whichever file set them last.
 func loadNetworkPolicyFiles(paths []string) (*netsecurity.Config, error) {
 	var merged *netsecurity.Config
 	for _, path := range paths {
-		cfg, err := netsecurity.LoadConfig(path)
+		cfg, err := policyfile.LoadConfig(path)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
