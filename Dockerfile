@@ -1,8 +1,10 @@
 # Build through the Makefile (make all / make dev): it sets FRANKENPHP_VERSION,
 # PHP_VERSION and SCRIPTLING_VERSION from one place (see "make update" to bump
-# them), and a bare `docker build .` without them fails on purpose.
-ARG FRANKENPHP_VERSION
-ARG PHP_VERSION
+# them). The "unset" defaults below are just to keep buildkit's linter from
+# flagging the FROM lines below as having an invalid default (they still
+# produce a tag that doesn't exist, so a bare `docker build .` fails on pull).
+ARG FRANKENPHP_VERSION=unset
+ARG PHP_VERSION=unset
 ARG GO_MODULE=example.com/frankenscriptling
 ARG SCRIPTLING_VERSION
 ARG IMAGE_VERSION=0.0.0-dev
