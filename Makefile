@@ -7,12 +7,12 @@
 
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
-FRANKENPHP_VERSION ?= 1.13.5
+FRANKENPHP_VERSION ?= 1.13.6
 # Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
 # used exactly, never switched by a dependency)
 GO_VERSION ?= 1.27.4
 SCRIPTLING_VERSION ?= v0.41.1
-PHP_VERSIONS ?= 8.5.12 8.4.27
+PHP_VERSIONS ?= 8.5.13 8.4.28
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 # The newest PHP line gets the floating `latest` tag.
 PHP_LATEST := $(lastword $(shell printf '%s\n' $(PHP_VERSIONS) | sort -V))
@@ -93,6 +93,11 @@ version:
 	@echo "go:                 $(GO_VERSION)"
 	@echo "php:                $(PHP_VERSIONS) (latest: $(PHP_LATEST))"
 
+.PHONY: update
+## Bump FRANKENPHP_VERSION, SCRIPTLING_VERSION and PHP_VERSIONS to their latest releases and rewrite this Makefile and README.md to match (needs python3 and network access)
+update:
+	./update-versions
+
 .PHONY: print
 ## Print the resolved bake configuration without building
 print:
@@ -104,7 +109,7 @@ list:
 	docker buildx bake --list=targets
 
 .PHONY: frankenscriptling-%
-## Build and push a specific PHP version of the release and its builder (e.g. make frankenscriptling-8.5.12 or frankenscriptling-8-5-12)
+## Build and push a specific PHP version of the release and its builder (e.g. make frankenscriptling-8.5.13 or frankenscriptling-8-5-13)
 frankenscriptling-%: check-release
 	docker buildx bake $(BAKE_FLAGS) frankenscriptling-$(subst .,-,$*) frankenscriptling-builder-$(subst .,-,$*)
 

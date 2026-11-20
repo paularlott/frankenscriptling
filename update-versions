@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Bump FRANKENPHP_VERSION, SCRIPTLING_VERSION and PHP_VERSIONS in the
+Makefile to their latest available releases, and rewrite the same values
+into README.md. The Dockerfile's ARGs for these three have no defaults —
+it only builds through the Makefile — so there's nothing to update there.
+
+Run via `make update`. Writes files in place; nothing is built or committed.
+Needs network access and the Python standard library only.
+
+Targets are matched by anchored patterns (a "KEY ?= value" line, an "ARG
+KEY=value" line, a markdown table row for KEY, a specific code example) and
+overwritten outright, rather than searching for the old value and swapping
+it for the new one. That makes this self-healing: it also straightens out
+a default that had already drifted out of sync before this script ever
+touched it, and it leaves prose like "fixed upstream in v1.13.5" — a
+historical note, not a pin — alone, since that text does not match any of
+the anchored patterns below.
+"""
+import json
+import re
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+MAKEFILE = ROOT / "Makefile"
+README = ROOT / "README.md"
+
+UA = {"User-Agent": "frankenscriptling-update-versions"}
+
+
+def get_json(url):
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def latest_release_tag(repo):
+    return get_json(f"https://api.github.com/repos/{repo}/releases/latest")["tag_name"]
+
+
+def frankenphp_tags(name_filter):
+    """Tag names of dunglas/frankenphp images whose name contains name_filter."""
+    names = []
+    url = f"https://hub.docker.com/v2/repositories/dunglas/frankenphp/tags?name={name_filter}&page_size=100"
+    while url:
+        page = get_json(url)
+        names.extend(r["name"] for r in page["results"])
+        url = page.get("next")
+    return names
+
+
+def current(var):
+    m = re.search(rf"^{re.escape(var)} \?= (.+)$", MAKEFILE.read_text(), re.MULTILINE)
+    if not m:
+        sys.exit(f"update-versions: couldn't find '{var} ?=' in {MAKEFILE}")
+    return m.group(1).strip()
+
+
+def rewrite(path, pattern, repl):
+    """Apply one anchored regex substitution to path, in place, if it matches."""
+    text = path.read_text()
+    updated, n = re.subn(pattern, repl, text, flags=re.MULTILINE)
+    if n and updated != text:
+        path.write_text(updated)
+    return n
+
+
+def main():
+    old_frankenphp = current("FRANKENPHP_VERSION")
+    old_scriptling = current("SCRIPTLING_VERSION")
+    old_php_versions = current("PHP_VERSIONS").split()
+
+    new_frankenphp = latest_release_tag("dunglas/frankenphp").lstrip("v")
+    if not frankenphp_tags(f"{new_frankenphp}-php"):
+        print(
+            f"update-versions: no dunglas/frankenphp images published for "
+            f"{new_frankenphp} yet; keeping {old_frankenphp}",
+            file=sys.stderr,
+        )
+        new_frankenphp = old_frankenphp
+
+    new_scriptling = latest_release_tag("paularlott/scriptling")
+
+    new_php_versions = []
+    for php in old_php_versions:
+        minor = ".".join(php.split(".")[:2])
+        pattern = re.compile(rf"^{re.escape(new_frankenphp)}-php{re.escape(minor)}\.(\d+)$")
+        patches = [
+            int(m.group(1))
+            for m in (pattern.match(tag) for tag in frankenphp_tags(f"{new_frankenphp}-php{minor}"))
+            if m
+        ]
+        if not patches:
+            print(
+                f"update-versions: no {new_frankenphp} image published for PHP {minor}.x yet; "
+                f"keeping {php}",
+                file=sys.stderr,
+            )
+            new_php_versions.append(php)
+            continue
+        new_php_versions.append(f"{minor}.{max(patches)}")
+
+    print(f"frankenphp: {old_frankenphp} -> {new_frankenphp}")
+    print(f"scriptling: {old_scriptling} -> {new_scriptling}")
+    print(f"php:        {' '.join(old_php_versions)} -> {' '.join(new_php_versions)}")
+
+    php_versions_str = " ".join(new_php_versions)
+    default_php = new_php_versions[0]  # matches Makefile's PHP_VERSION := $(firstword PHP_VERSIONS)
+    ver = r"\d+\.\d+\.\d+"
+
+    # Makefile: the `KEY ?= value` defaults, and the help-text example.
+    rewrite(MAKEFILE, r"^FRANKENPHP_VERSION \?= .*$", f"FRANKENPHP_VERSION ?= {new_frankenphp}")
+    rewrite(MAKEFILE, r"^SCRIPTLING_VERSION \?= .*$", f"SCRIPTLING_VERSION ?= {new_scriptling}")
+    rewrite(MAKEFILE, r"^PHP_VERSIONS \?= .*$", f"PHP_VERSIONS ?= {php_versions_str}")
+    rewrite(MAKEFILE, rf"make frankenscriptling-{ver}", f"make frankenscriptling-{default_php}")
+
+    # README.md: the defaults table, the quick-start example, and the image
+    # tag examples (which all illustrate a build on the default PHP version).
+    rewrite(README, r"(\| `FRANKENPHP_VERSION` \| `)[^`]+(`)", rf"\g<1>{new_frankenphp}\g<2>")
+    rewrite(README, r"(\| `SCRIPTLING_VERSION` \| `)[^`]+(`)", rf"\g<1>{new_scriptling}\g<2>")
+    rewrite(README, r"(\| `PHP_VERSIONS`\s*\| `)[^`]+(`)", rf"\g<1>{php_versions_str}\g<2>")
+    rewrite(README, rf"make frankenscriptling-{ver}", f"make frankenscriptling-{default_php}")
+    rewrite(README, rf"(dunglas/frankenphp:){ver}(-builder-php)", rf"\g<1>{new_frankenphp}\g<2>")
+    rewrite(README, rf"-php{ver}\b", f"-php{default_php}")
+    rewrite(README, rf"(PHP ){ver}(;)", rf"\g<1>{default_php}\g<2>")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except urllib.error.URLError as exc:
+        sys.exit(f"update-versions: network error: {exc}")

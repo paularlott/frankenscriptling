@@ -19,7 +19,7 @@ See [Image tags](#image-tags) for what each tag means and which ones move.
 make
 
 # Build a specific PHP version
-make frankenscriptling-8.5.12
+make frankenscriptling-8.5.13
 
 # Build and push a test build from an uncommitted checkout (0.0.0-dev.<sha> tags only)
 make dev-push
@@ -401,10 +401,10 @@ purpose. Override any variable via the environment, a local `.env` file
 | -------------------- | --------------- | ------------------------------------------------------------ |
 | `TAG_BASE`           | `paularlott`    | Registry/namespace for image tags                            |
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
-| `FRANKENPHP_VERSION` | `1.13.4`        | FrankenPHP version                                           |
+| `FRANKENPHP_VERSION` | `1.13.6`        | FrankenPHP version                                           |
 | `GO_VERSION`         | `1.27.4`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
-| `SCRIPTLING_VERSION` | `v0.40.1`       | Scriptling version                                           |
-| `PHP_VERSIONS`       | `8.5.12 8.4.27` | Space-separated PHP versions (built in parallel)             |
+| `SCRIPTLING_VERSION` | `v0.41.1`       | Scriptling version                                           |
+| `PHP_VERSIONS`       | `8.5.13 8.4.28` | Space-separated PHP versions (built in parallel)             |
 | `VERSION`            | from git        | Image version: the tag on HEAD (`v0.34.0` becomes `0.34.0`)  |
 
 `make version` prints what a build would use. `make all` and
@@ -425,17 +425,17 @@ inside by `Scriptling::getBuildInfo()`.
 
 | Tag                  | Moves? | Meaning                                                   |
 | -------------------- | ------ | --------------------------------------------------------- |
-| `0.34.0-php8.5.12`   | no     | release 0.34.0 on exactly PHP 8.5.12; built once           |
+| `0.34.0-php8.5.13`   | no     | release 0.34.0 on exactly PHP 8.5.13; built once           |
 | `0.34.0-php8.5`      | no     | the same build, named by PHP line                          |
 | `php8.5`, `php8.4`   | yes    | the newest release for that PHP line                       |
 | `latest`             | yes    | the newest release on the newest PHP line                  |
 
 Builder images are tagged the way FrankenPHP tags its own
-(`dunglas/frankenphp:1.13.4-builder-php8.4`):
+(`dunglas/frankenphp:1.13.6-builder-php8.4`):
 
 | Tag                        | Moves? | Meaning                                              |
 | -------------------------- | ------ | ---------------------------------------------------- |
-| `0.34.0-builder-php8.5.12` | no     | the builder for `0.34.0-php8.5.12`                   |
+| `0.34.0-builder-php8.5.13` | no     | the builder for `0.34.0-php8.5.13`                   |
 | `0.34.0-builder-php8.5`    | no     | the same build, named by PHP line                    |
 | `builder-php8.5`           | yes    | the builder for the newest release on that PHP line  |
 | `builder`                  | yes    | the builder for `latest`                             |

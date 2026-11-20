@@ -1,18 +1,19 @@
-# Build through the Makefile (make all / make dev): it sets every ARG below
-# from one place. The defaults only keep a bare `docker build .` working.
-ARG FRANKENPHP_VERSION=1.13.4
-ARG PHP_VERSION=8.5.12
+# Build through the Makefile (make all / make dev): it sets FRANKENPHP_VERSION,
+# PHP_VERSION and SCRIPTLING_VERSION from one place (see "make update" to bump
+# them), and a bare `docker build .` without them fails on purpose.
+ARG FRANKENPHP_VERSION
+ARG PHP_VERSION
 ARG GO_MODULE=example.com/frankenscriptling
-ARG SCRIPTLING_VERSION=v0.40.1
+ARG SCRIPTLING_VERSION
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
 
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION} AS builder
 
-ARG FRANKENPHP_VERSION=1.13.4
-ARG PHP_VERSION=8.5.12
+ARG FRANKENPHP_VERSION
+ARG PHP_VERSION
 ARG GO_MODULE=example.com/frankenscriptling
-ARG SCRIPTLING_VERSION=v0.40.1
+ARG SCRIPTLING_VERSION
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
 
@@ -87,7 +88,7 @@ RUN build-frankenscriptling
 # `target` field) produces, and that must always be `runtime` below, never
 # this test-only one.
 FROM builder AS test-plugin
-ARG SCRIPTLING_VERSION=v0.40.1
+ARG SCRIPTLING_VERSION
 COPY tests/fixtures/plugin-src/ /test-plugin-src/
 RUN cd /test-plugin-src \
     && go mod init frankenscriptling-test-plugin \
@@ -135,7 +136,7 @@ RUN set -eux; \
 
 FROM debian:trixie-slim AS runtime
 
-ARG PHP_VERSION=8.5.12
+ARG PHP_VERSION
 
 # As the official PHP / FrankenPHP images
 ENV PHPIZE_DEPS="autoconf dpkg-dev file g++ gcc libc-dev make pkg-config re2c" \
