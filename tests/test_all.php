@@ -114,6 +114,10 @@ echo "=== Get Variables ===\n";
 
 $vm->setVar("getstr", "world");
 assert_eq($vm->getVar("getstr"), "world", "getVar: string");
+$vm->eval('getdict = {"a": 1, "b": [True, None]}');
+assert_eq($vm->getVar("getdict"), "{'a': 1, 'b': [True, None]}", "getVar: dict written as str()");
+$vm->eval('getfloat = 2.0');
+assert_eq($vm->getVar("getfloat"), "2.0", "getVar: float written as str()");
 assert_eq($vm->getVarAsString("getstr"), "world", "getVarAsString: string");
 
 $vm->setVarInt("getint", 99);

@@ -344,13 +344,15 @@ func (s *ScriptlingVM) GetVar(name *C.zend_string) unsafe.Pointer {
 	if !s.ensureVM() {
 		return frankenphp.PHPString("", false)
 	}
-	val, errObj := s.vm.GetVar(frankenphp.GoString(unsafe.Pointer(name)))
-	if errObj != nil {
-		s.setErr(errObj.Inspect())
+	// Written as eval() writes a result, Python's str(): a dict reads
+	// {'a': 1}, not Go's map[a:1].
+	val, err := s.vm.GetVarAsObject(frankenphp.GoString(unsafe.Pointer(name)))
+	if err != nil {
+		s.setErr(err.Error())
 		return frankenphp.PHPString("", false)
 	}
 	s.clearErr()
-	return frankenphp.PHPString(fmt.Sprintf("%v", val), false)
+	return frankenphp.PHPString(val.Inspect(), false)
 }
 
 // export_php:method Scriptling::getVarAsString(string $name): string

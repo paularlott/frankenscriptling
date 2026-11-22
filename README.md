@@ -301,7 +301,7 @@ $vm->clearError();
 | `setVarJSON`     | `string $name, string $json`  | `void`   | Set from JSON value          |
 | `setVarList`     | `string $name, string $json`  | `void`   | Set list from JSON array     |
 | `setVarDict`     | `string $name, string $json`  | `void`   | Set dict from JSON object    |
-| `getVar`         | `string $name`                | `string` | Get string representation    |
+| `getVar`         | `string $name`                | `string` | Get as Python's `str()`, like `eval()` |
 | `getVarAsString` | `string $name`                | `string` | Get as string                |
 | `getVarInt`      | `string $name`                | `int`    | Get as integer               |
 | `getVarFloat`    | `string $name`                | `float`  | Get as float                 |
@@ -403,7 +403,7 @@ purpose. Override any variable via the environment, a local `.env` file
 | `CACHE_TAG_BASE`     | `$(TAG_BASE)`         | Registry for the build cache                                |
 | `FRANKENPHP_VERSION` | `1.14.0`              | FrankenPHP version                                          |
 | `GO_VERSION`         | `1.27.4`              | Go toolchain the binary is built with (`GOTOOLCHAIN`)       |
-| `SCRIPTLING_VERSION` | `v0.43.0`             | Scriptling version                                          |
+| `SCRIPTLING_VERSION` | `v0.44.0`             | Scriptling version                                          |
 | `PHP_VERSIONS`       | `8.6.0 8.5.13 8.4.28` | Space-separated PHP versions (built in parallel)            |
 | `VERSION`            | from git              | Image version: the tag on HEAD (`v1.2.3` becomes `1.2.3`)   |
 
