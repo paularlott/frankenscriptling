@@ -7,18 +7,18 @@
 
 TAG_BASE ?= paularlott
 CACHE_TAG_BASE ?= $(TAG_BASE)
-FRANKENPHP_VERSION ?= 1.13.6
+FRANKENPHP_VERSION ?= 1.14.0
 # Go toolchain for the FrankenPHP/Scriptling build (GOTOOLCHAIN=go<version>:
 # used exactly, never switched by a dependency)
 GO_VERSION ?= 1.27.4
-SCRIPTLING_VERSION ?= v0.41.1
-PHP_VERSIONS ?= 8.5.13 8.4.28
+SCRIPTLING_VERSION ?= v0.43.0
+PHP_VERSIONS ?= 8.6.0 8.5.13 8.4.28
 PHP_VERSION := $(firstword $(PHP_VERSIONS))
 # The newest PHP line gets the floating `latest` tag.
 PHP_LATEST := $(lastword $(shell printf '%s\n' $(PHP_VERSIONS) | sort -V))
 
 # =============================================================================
-# Image version: the git tag on HEAD (v0.33.0 -> 0.33.0). An untagged or
+# Image version: the git tag on HEAD (v1.2.3 -> 1.2.3). An untagged or
 # dirty checkout gets a dev version that can never collide with a release,
 # and `all` / `frankenscriptling-%` refuse to build and push it (see
 # check-release). Images are tagged <version>-php<php>, <version>-php<x.y>,
@@ -59,7 +59,7 @@ BAKE_FLAGS ?=
 ## Refuse to build a release image from an untagged or dirty checkout
 check-release:
 	@if [ -z "$(GIT_TAG)" ] || [ -n "$(GIT_DIRTY)" ]; then \
-		echo "error: release builds need a clean checkout at a version tag (git tag v0.33.0); HEAD is $(REVISION), version would be $(VERSION)" >&2; \
+		echo "error: release builds need a clean checkout at a version tag (git tag v<version>); HEAD is $(REVISION), version would be $(VERSION)" >&2; \
 		exit 1; \
 	fi
 
@@ -109,7 +109,7 @@ list:
 	docker buildx bake --list=targets
 
 .PHONY: frankenscriptling-%
-## Build and push a specific PHP version of the release and its builder (e.g. make frankenscriptling-8.5.13 or frankenscriptling-8-5-13)
+## Build and push a specific PHP version of the release and its builder (e.g. make frankenscriptling-8.6.0 or frankenscriptling-8-6-0)
 frankenscriptling-%: check-release
 	docker buildx bake $(BAKE_FLAGS) frankenscriptling-$(subst .,-,$*) frankenscriptling-builder-$(subst .,-,$*)
 

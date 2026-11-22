@@ -115,16 +115,14 @@ def main():
     rewrite(MAKEFILE, r"^SCRIPTLING_VERSION \?= .*$", f"SCRIPTLING_VERSION ?= {new_scriptling}")
     rewrite(MAKEFILE, r"^PHP_VERSIONS \?= .*$", f"PHP_VERSIONS ?= {php_versions_str}")
     rewrite(MAKEFILE, rf"make frankenscriptling-{ver}", f"make frankenscriptling-{default_php}")
+    rewrite(MAKEFILE, r"or frankenscriptling-\d+-\d+-\d+\)", f"or frankenscriptling-{default_php.replace('.', '-')})")
 
-    # README.md: the defaults table, the quick-start example, and the image
-    # tag examples (which all illustrate a build on the default PHP version).
+    # README.md: the defaults table and the quick-start example. The image tag
+    # examples use placeholders (<version>, <x.y>), so they never go stale.
     rewrite(README, r"(\| `FRANKENPHP_VERSION` \| `)[^`]+(`)", rf"\g<1>{new_frankenphp}\g<2>")
     rewrite(README, r"(\| `SCRIPTLING_VERSION` \| `)[^`]+(`)", rf"\g<1>{new_scriptling}\g<2>")
     rewrite(README, r"(\| `PHP_VERSIONS`\s*\| `)[^`]+(`)", rf"\g<1>{php_versions_str}\g<2>")
     rewrite(README, rf"make frankenscriptling-{ver}", f"make frankenscriptling-{default_php}")
-    rewrite(README, rf"(dunglas/frankenphp:){ver}(-builder-php)", rf"\g<1>{new_frankenphp}\g<2>")
-    rewrite(README, rf"-php{ver}\b", f"-php{default_php}")
-    rewrite(README, rf"(PHP ){ver}(;)", rf"\g<1>{default_php}\g<2>")
 
 
 if __name__ == "__main__":

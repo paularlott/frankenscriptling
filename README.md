@@ -5,9 +5,9 @@ A Docker image combining [FrankenPHP](https://frankenphp.dev/) with the [Scriptl
 Pre-built images are available at [hub.docker.com/r/paularlott/frankenscriptling](https://hub.docker.com/r/paularlott/frankenscriptling):
 
 ```bash
-docker pull paularlott/frankenscriptling:latest          # newest release, newest PHP line
-docker pull paularlott/frankenscriptling:php8.4          # newest release for PHP 8.4
-docker pull paularlott/frankenscriptling:0.34.0-php8.5   # a fixed release, pin this in production
+docker pull paularlott/frankenscriptling:latest               # newest release, newest PHP line
+docker pull paularlott/frankenscriptling:php<x.y>             # newest release for PHP <x.y>, e.g. php8.5
+docker pull paularlott/frankenscriptling:<version>-php<x.y>   # a fixed release, pin this in production
 ```
 
 See [Image tags](#image-tags) for what each tag means and which ones move.
@@ -19,7 +19,7 @@ See [Image tags](#image-tags) for what each tag means and which ones move.
 make
 
 # Build a specific PHP version
-make frankenscriptling-8.5.13
+make frankenscriptling-8.6.0
 
 # Build and push a test build from an uncommitted checkout (0.0.0-dev.<sha> tags only)
 make dev-push
@@ -374,7 +374,7 @@ $vm->clearError();
 PHP Request
     |
     v
-FrankenPHP (PHP 8.5 + Caddy)
+FrankenPHP (PHP 8.6 + Caddy)
     |
     v
 Scriptling PHP Class (FrankenPHP extension)
@@ -397,15 +397,15 @@ exports them to `docker-bake.hcl`; a bare `docker buildx bake` fails on
 purpose. Override any variable via the environment, a local `.env` file
 (gitignored), or the command line.
 
-| Variable             | Default         | Description                                                  |
-| -------------------- | --------------- | ------------------------------------------------------------ |
-| `TAG_BASE`           | `paularlott`    | Registry/namespace for image tags                            |
-| `CACHE_TAG_BASE`     | `$(TAG_BASE)`   | Registry for the build cache                                 |
-| `FRANKENPHP_VERSION` | `1.13.6`        | FrankenPHP version                                           |
-| `GO_VERSION`         | `1.27.4`        | Go toolchain the binary is built with (`GOTOOLCHAIN`)        |
-| `SCRIPTLING_VERSION` | `v0.41.1`       | Scriptling version                                           |
-| `PHP_VERSIONS`       | `8.5.13 8.4.28` | Space-separated PHP versions (built in parallel)             |
-| `VERSION`            | from git        | Image version: the tag on HEAD (`v0.34.0` becomes `0.34.0`)  |
+| Variable             | Default               | Description                                                 |
+| -------------------- | --------------------- | ----------------------------------------------------------- |
+| `TAG_BASE`           | `paularlott`          | Registry/namespace for image tags                           |
+| `CACHE_TAG_BASE`     | `$(TAG_BASE)`         | Registry for the build cache                                |
+| `FRANKENPHP_VERSION` | `1.14.0`              | FrankenPHP version                                          |
+| `GO_VERSION`         | `1.27.4`              | Go toolchain the binary is built with (`GOTOOLCHAIN`)       |
+| `SCRIPTLING_VERSION` | `v0.43.0`             | Scriptling version                                          |
+| `PHP_VERSIONS`       | `8.6.0 8.5.13 8.4.28` | Space-separated PHP versions (built in parallel)            |
+| `VERSION`            | from git              | Image version: the tag on HEAD (`v1.2.3` becomes `1.2.3`)   |
 
 `make version` prints what a build would use. `make all` and
 `make frankenscriptling-<php>` build and push a release and refuse to run
@@ -423,32 +423,35 @@ labels (`org.opencontainers.image.version`, `org.opencontainers.image.revision`,
 `dev.scriptling.php-version`, shown by `docker inspect`) and reported from
 inside by `Scriptling::getBuildInfo()`.
 
-| Tag                  | Moves? | Meaning                                                   |
-| -------------------- | ------ | --------------------------------------------------------- |
-| `0.34.0-php8.5.13`   | no     | release 0.34.0 on exactly PHP 8.5.13; built once           |
-| `0.34.0-php8.5`      | no     | the same build, named by PHP line                          |
-| `php8.5`, `php8.4`   | yes    | the newest release for that PHP line                       |
-| `latest`             | yes    | the newest release on the newest PHP line                  |
+`<version>` is the image version (the git tag without its `v`), `<x.y.z>` a PHP
+version and `<x.y>` its PHP line; `make version` shows the ones a build uses.
+
+| Tag                     | Moves? | Meaning                                                  |
+| ----------------------- | ------ | -------------------------------------------------------- |
+| `<version>-php<x.y.z>`  | no     | release `<version>` on exactly PHP `<x.y.z>`; built once |
+| `<version>-php<x.y>`    | no     | the same build, named by PHP line                        |
+| `php<x.y>`              | yes    | the newest release for that PHP line                     |
+| `latest`                | yes    | the newest release on the newest PHP line                |
 
 Builder images are tagged the way FrankenPHP tags its own
-(`dunglas/frankenphp:1.13.6-builder-php8.4`):
+(`dunglas/frankenphp:<frankenphp>-builder-php<x.y>`):
 
-| Tag                        | Moves? | Meaning                                              |
-| -------------------------- | ------ | ---------------------------------------------------- |
-| `0.34.0-builder-php8.5.13` | no     | the builder for `0.34.0-php8.5.13`                   |
-| `0.34.0-builder-php8.5`    | no     | the same build, named by PHP line                    |
-| `builder-php8.5`           | yes    | the builder for the newest release on that PHP line  |
-| `builder`                  | yes    | the builder for `latest`                             |
+| Tag                            | Moves? | Meaning                                             |
+| ------------------------------ | ------ | --------------------------------------------------- |
+| `<version>-builder-php<x.y.z>` | no     | the builder for `<version>-php<x.y.z>`              |
+| `<version>-builder-php<x.y>`   | no     | the same build, named by PHP line                   |
+| `builder-php<x.y>`             | yes    | the builder for the newest release on that PHP line |
+| `builder`                      | yes    | the builder for `latest`                            |
 
 A builder is the build stage with libphp, xcaddy and the prepared extension
 source. Use one to add your own Caddy modules without copying this build:
 
 ```dockerfile
-FROM paularlott/frankenscriptling:0.34.0-builder-php8.5 AS builder
+FROM paularlott/frankenscriptling:<version>-builder-php<x.y> AS builder
 RUN build-frankenscriptling --with github.com/acme/caddy-module@v1.2.3 \
     && setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp
 
-FROM paularlott/frankenscriptling:0.34.0-php8.5
+FROM paularlott/frankenscriptling:<version>-php<x.y>
 COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 ```
 
@@ -466,12 +469,12 @@ Pin a fixed tag (or a digest, `paularlott/frankenscriptling@sha256:…`) in
 production; use the floating tags to track releases. Versions bump by patch
 for rebuilds and extension fixes, by minor for a scriptling upgrade or a
 backwards-compatible PHP API addition, and by major if the PHP API or the
-security-policy semantics change; `CHANGELOG.md`
-maps each image version to the scriptling and FrankenPHP versions in it. The
+security-policy semantics change. The labels and `getBuildInfo()` (above)
+say which scriptling and FrankenPHP versions an image contains. The
 numbering starts at 0.33.0, matching the scriptling release it ships;
 earlier `<scriptling>-php<php>` tags were retired when the scheme changed.
 
-To release: tag the commit (`git tag v0.34.0`), then `make all`.
+To release: tag the commit (`git tag v<version>`), then `make all`.
 
 ## Image and PHP extensions
 
@@ -502,7 +505,7 @@ Three differences from the official image:
 So the usual ways of adding extensions work unchanged:
 
 ```dockerfile
-FROM paularlott/frankenscriptling:php8.5
+FROM paularlott/frankenscriptling:php<x.y>
 
 # FrankenPHP docs: core and PECL extensions alike
 RUN install-php-extensions pdo_mysql gd intl zip redis xdebug
