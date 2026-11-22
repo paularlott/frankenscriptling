@@ -532,11 +532,12 @@ RUN apt-get update && apt-get install -y $PHPIZE_DEPS \
 
 ## Security Policy
 
-Scripts only get filesystem or network access for libraries a vhost
+Scripts only get filesystem or network access for libraries the operator
 explicitly enables — everything fs/net-capable is closed by default. Set
 `SCRIPTLING_ENABLED_LIBRARIES`, `SCRIPTLING_ALLOWED_PATHS`, and/or
-`SCRIPTLING_NETWORK_POLICY_FILE` (globally or per Caddy site block via the
-`env` directive) to open specific libraries up. See
+`SCRIPTLING_NETWORK_POLICY_FILE` on the container to open specific libraries
+up. They are read once and apply to the whole FrankenPHP process; a Caddy
+`env` directive in a site block does not change them. See
 [docs/security-policy.md](docs/security-policy.md) for the full reference,
 including which libraries are gated, excluded, and the network policy file
 format.
@@ -597,9 +598,8 @@ All Scriptling VM instances come pre-loaded with the following libraries. Use `i
 | AI Agent          | `scriptling.ai.agent`          | AI agent framework with tool calling                         |
 | AI Agent Interact | `scriptling.ai.agent.interact` | Interactive agent sessions                                   |
 | AI Memory         | `scriptling.ai.memory`         | Persistent memory for AI agents                              |
-| MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction (network-gated)      |
+| MCP               | `scriptling.mcp`               | Model Context Protocol tool interaction, with `scriptling.toon` encoding (network-gated) |
 | Mercure           | `scriptling.mercure`           | Publish to and subscribe at Mercure hubs (network-gated)     |
-| TOON              | `scriptling.toon`              | TOON (Token-Oriented Object Notation) encoding               |
 | Similarity        | `scriptling.similarity`        | Fuzzy matching and MinHash similarity search                 |
 | HTML Templates    | `scriptling.template.html`     | HTML template rendering                                      |
 | Text Templates    | `scriptling.template.text`     | Text template rendering                                      |
